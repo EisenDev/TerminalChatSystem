@@ -1,8 +1,7 @@
 .DS_Store
 .env
 dist/
-client
-server
+/client
+/server
 *.log
 *.tar.gz
-
