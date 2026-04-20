@@ -6,11 +6,12 @@ TMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TMP_DIR"' EXIT INT TERM
 
 ARCHIVE="$TMP_DIR/termichat-linux-amd64.tar.gz"
+ARCHIVE_URL="$BASE_URL/downloads/termichat-linux-amd64.tar.gz?ts=$(date +%s)"
 
 if command -v curl >/dev/null 2>&1; then
-  curl -fsSL "$BASE_URL/downloads/termichat-linux-amd64.tar.gz" -o "$ARCHIVE"
+  curl -fsSL "$ARCHIVE_URL" -o "$ARCHIVE"
 elif command -v wget >/dev/null 2>&1; then
-  wget -qO "$ARCHIVE" "$BASE_URL/downloads/termichat-linux-amd64.tar.gz"
+  wget -qO "$ARCHIVE" "$ARCHIVE_URL"
 else
   echo "curl or wget is required"
   exit 1
