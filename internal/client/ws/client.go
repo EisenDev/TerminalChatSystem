@@ -28,22 +28,23 @@ type Event struct {
 }
 
 type Session struct {
-	Handle    string
-	Workspace string
-	Code      string
-	Channel   string
+	Handle      string
+	Workspace   string
+	Code        string
+	Channel     string
+	DeviceToken string
 }
 
 type Manager struct {
 	logger *slog.Logger
 	cfg    config.Client
 
-	mu      sync.RWMutex
-	conn    *websocket.Conn
-	session Session
-	events  chan Event
-	send    chan protocol.Envelope
-	closeCh chan struct{}
+	mu        sync.RWMutex
+	conn      *websocket.Conn
+	session   Session
+	events    chan Event
+	send      chan protocol.Envelope
+	closeCh   chan struct{}
 	closeOnce sync.Once
 }
 
@@ -151,7 +152,7 @@ func (m *Manager) resync() {
 	if session.Handle == "" || session.Workspace == "" {
 		return
 	}
-	_ = m.Send(protocol.ClientIdentify, protocol.IdentifyPayload{Handle: session.Handle})
+	_ = m.Send(protocol.ClientIdentify, protocol.IdentifyPayload{Handle: session.Handle, DeviceToken: session.DeviceToken})
 	_ = m.Send(protocol.ClientJoinWorkspace, protocol.JoinWorkspacePayload{Workspace: session.Workspace, Code: session.Code})
 	if session.Channel != "" {
 		_ = m.Send(protocol.ClientJoinChannel, protocol.JoinChannelPayload{Channel: session.Channel})

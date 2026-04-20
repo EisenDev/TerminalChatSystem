@@ -87,7 +87,8 @@ func DecodePayload[T any](env Envelope) (T, error) {
 }
 
 type IdentifyPayload struct {
-	Handle string `json:"handle"`
+	Handle      string `json:"handle,omitempty"`
+	DeviceToken string `json:"device_token"`
 }
 
 type JoinWorkspacePayload struct {
@@ -137,10 +138,10 @@ type IdentifiedPayload struct {
 }
 
 type WorkspaceJoinedPayload struct {
-	Workspace      models.Workspace  `json:"workspace"`
-	Channels       []models.Channel  `json:"channels"`
-	Users          []models.User     `json:"users"`
-	CurrentChannel string            `json:"current_channel"`
+	Workspace      models.Workspace `json:"workspace"`
+	Channels       []models.Channel `json:"channels"`
+	Users          []models.User    `json:"users"`
+	CurrentChannel string           `json:"current_channel"`
 }
 
 type ChannelJoinedPayload struct {
@@ -211,9 +212,9 @@ type CallInvitePayload struct {
 }
 
 type CallStatePayload struct {
-	SessionID string             `json:"session_id"`
-	Target    string             `json:"target"`
-	Status    models.CallStatus  `json:"status"`
-	Muted     bool               `json:"muted"`
-	Note      string             `json:"note,omitempty"`
+	SessionID string            `json:"session_id"`
+	Target    string            `json:"target"`
+	Status    models.CallStatus `json:"status"`
+	Muted     bool              `json:"muted"`
+	Note      string            `json:"note,omitempty"`
 }

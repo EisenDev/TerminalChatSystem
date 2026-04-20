@@ -8,6 +8,7 @@ import (
 
 	"github.com/eisen/teamchat/internal/server/call"
 	"github.com/eisen/teamchat/internal/server/presence"
+	"github.com/eisen/teamchat/internal/server/store"
 	"github.com/eisen/teamchat/internal/shared/models"
 	"github.com/eisen/teamchat/internal/shared/protocol"
 )
@@ -19,13 +20,14 @@ type fakeStore struct {
 	messages  []models.Message
 }
 
-func (f *fakeStore) EnsureUser(_ context.Context, handle string) (models.User, error) {
+func (f *fakeStore) JoinWorkspace(_ context.Context, req store.JoinWorkspaceRequest) (store.JoinWorkspaceResult, error) {
+	handle := req.RequestedHandle
+	if handle == "" {
+		handle = "alice"
+	}
 	f.user = models.User{ID: "u1", Handle: handle}
-	return f.user, nil
-}
-func (f *fakeStore) EnsureWorkspace(_ context.Context, name, _ string, ownerHandle string) (models.Workspace, error) {
-	f.workspace = models.Workspace{ID: "w1", Name: name, OwnerHandle: ownerHandle}
-	return f.workspace, nil
+	f.workspace = models.Workspace{ID: "w1", Name: req.Name, OwnerHandle: handle, OwnerUserID: f.user.ID}
+	return store.JoinWorkspaceResult{Workspace: f.workspace, User: f.user}, nil
 }
 func (f *fakeStore) EnsureChannel(_ context.Context, workspaceID, name string, kind models.ChannelKind) (models.Channel, error) {
 	f.channel = models.Channel{ID: "c1", WorkspaceID: workspaceID, Name: name, Kind: kind}
@@ -39,7 +41,9 @@ func (f *fakeStore) ListChannels(context.Context, string) ([]models.Channel, err
 func (f *fakeStore) ListWorkspaceUsers(context.Context, string) ([]models.User, error) {
 	return []models.User{f.user}, nil
 }
-func (f *fakeStore) ListHistory(context.Context, string, int) ([]models.Message, error) { return nil, nil }
+func (f *fakeStore) ListHistory(context.Context, string, int) ([]models.Message, error) {
+	return nil, nil
+}
 func (f *fakeStore) SaveMessage(_ context.Context, workspaceID, channelID string, user models.User, body string, messageType models.MessageType) (models.Message, error) {
 	msg := models.Message{
 		ID:          "m1",
@@ -69,9 +73,9 @@ func TestHubMessageFlow(t *testing.T) {
 	defer cancel()
 	go hub.Run(ctx)
 
-	sess := NewSession("s1")
+	sess := NewSession("s1", "127.0.0.1")
 	hub.Register(sess)
-	hub.HandleInbound(sess, protocol.MustEnvelope(protocol.ClientIdentify, protocol.IdentifyPayload{Handle: "alice"}))
+	hub.HandleInbound(sess, protocol.MustEnvelope(protocol.ClientIdentify, protocol.IdentifyPayload{Handle: "alice", DeviceToken: "device-1"}))
 	hub.HandleInbound(sess, protocol.MustEnvelope(protocol.ClientJoinWorkspace, protocol.JoinWorkspacePayload{Workspace: "acme", Code: "acme123"}))
 	hub.HandleInbound(sess, protocol.MustEnvelope(protocol.ClientSendMessage, protocol.SendMessagePayload{Body: "hello"}))
 

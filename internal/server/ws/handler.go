@@ -2,8 +2,11 @@ package ws
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"log/slog"
+	"net"
 	"net/http"
 	"time"
 
@@ -40,12 +43,28 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sess := chat.NewSession(r.RemoteAddr)
+	sess := chat.NewSession(newSessionID(), remoteIP(r.RemoteAddr))
 	h.hub.Register(sess)
 
 	ctx, cancel := context.WithCancel(r.Context())
 	go h.writePump(ctx, conn, sess)
 	h.readPump(ctx, cancel, conn, sess)
+}
+
+func remoteIP(remoteAddr string) string {
+	host, _, err := net.SplitHostPort(remoteAddr)
+	if err == nil {
+		return host
+	}
+	return remoteAddr
+}
+
+func newSessionID() string {
+	buf := make([]byte, 8)
+	if _, err := rand.Read(buf); err != nil {
+		return "session"
+	}
+	return hex.EncodeToString(buf)
 }
 
 func (h *Handler) readPump(ctx context.Context, cancel context.CancelFunc, conn *websocket.Conn, sess *chat.Session) {

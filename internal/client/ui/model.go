@@ -11,11 +11,12 @@ import (
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/textarea"
+	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/eisen/teamchat/internal/client/profile"
 	"github.com/eisen/teamchat/internal/client/state"
 	clientws "github.com/eisen/teamchat/internal/client/ws"
 	"github.com/eisen/teamchat/internal/shared/config"
@@ -36,7 +37,7 @@ type pingEffectState struct {
 	From      string
 	Effect    string
 	Scope     string
-	Target     string
+	Target    string
 	StartedAt time.Time
 	EndsAt    time.Time
 }
@@ -87,19 +88,17 @@ type Model struct {
 	effectsEnabled    bool
 	mutedEffectUsers  map[string]bool
 	activeEffect      *pingEffectState
+	profiles          *profile.Store
+	deviceToken       string
 }
 
 type wsEventMsg clientws.Event
 
 func NewModel(cfg config.Client, logger *slog.Logger) Model {
-	handle := textinput.New()
-	handle.Placeholder = "handle"
-	handle.SetValue(cfg.DefaultHandle)
-	handle.Focus()
-
 	server := textinput.New()
 	server.Placeholder = "http://localhost:8080"
 	server.SetValue(cfg.ServerURL)
+	server.Focus()
 
 	workspace := textinput.New()
 	workspace.Placeholder = "workspace / group name"
@@ -109,6 +108,10 @@ func NewModel(cfg config.Client, logger *slog.Logger) Model {
 	workspaceCode.Placeholder = "workspace code"
 	workspaceCode.SetValue(cfg.WorkspaceCode)
 
+	handle := textinput.New()
+	handle.Placeholder = "handle"
+	handle.SetValue(cfg.DefaultHandle)
+
 	input := textarea.New()
 	input.Placeholder = "type a message or /help"
 	input.Focus()
@@ -117,8 +120,12 @@ func NewModel(cfg config.Client, logger *slog.Logger) Model {
 	vp := viewport.New(80, 20)
 	ctx, cancel := context.WithCancel(context.Background())
 	manager := clientws.NewManager(logger, cfg)
+	profiles, err := profile.Open()
+	if err != nil {
+		logger.Warn("open client profile", "error", err)
+	}
 
-	return Model{
+	model := Model{
 		cfg:      cfg,
 		logger:   logger,
 		phase:    phaseSetup,
@@ -130,7 +137,7 @@ func NewModel(cfg config.Client, logger *slog.Logger) Model {
 		ctx:      ctx,
 		cancel:   cancel,
 		setupInputs: []textinput.Model{
-			handle, server, workspace, workspaceCode,
+			server, workspace, workspaceCode, handle,
 		},
 		input:             input,
 		viewport:          vp,
@@ -138,7 +145,15 @@ func NewModel(cfg config.Client, logger *slog.Logger) Model {
 		messagesByChannel: make(map[string][]models.Message),
 		effectsEnabled:    true,
 		mutedEffectUsers:  make(map[string]bool),
+		profiles:          profiles,
 	}
+	if profiles != nil {
+		model.deviceToken = profiles.DeviceToken()
+		model.prefillRememberedHandle()
+	} else {
+		model.deviceToken = fmt.Sprintf("ephemeral-%d", time.Now().UnixNano())
+	}
+	return model
 }
 
 func defaultKeys() keyMap {
@@ -228,12 +243,13 @@ func (m Model) updateSetup(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.setupInputs[m.setupStep].Blur()
 			m.setupStep++
 			m.setupInputs[m.setupStep].Focus()
+			m.prefillRememberedHandle()
 			return m, textinput.Blink
 		}
-		m.app.Handle = strings.TrimSpace(m.setupInputs[0].Value())
-		m.app.ServerURL = strings.TrimSpace(m.setupInputs[1].Value())
-		m.app.Workspace = strings.TrimSpace(m.setupInputs[2].Value())
-		m.cfg.WorkspaceCode = strings.TrimSpace(m.setupInputs[3].Value())
+		m.app.ServerURL = strings.TrimSpace(m.setupInputs[0].Value())
+		m.app.Workspace = strings.TrimSpace(m.setupInputs[1].Value())
+		m.cfg.WorkspaceCode = strings.TrimSpace(m.setupInputs[2].Value())
+		m.app.Handle = strings.TrimSpace(m.setupInputs[3].Value())
 		m.app.Current = m.cfg.DefaultChannel
 		m.cfg.ServerURL = m.app.ServerURL
 		m.reconnect()
@@ -253,6 +269,7 @@ func (m Model) updateSetup(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	var cmd tea.Cmd
 	m.setupInputs[m.setupStep], cmd = m.setupInputs[m.setupStep].Update(msg)
+	m.prefillRememberedHandle()
 	return m, cmd
 }
 
@@ -260,10 +277,11 @@ func (m *Model) reconnect() {
 	m.ws.Close()
 	m.ws = clientws.NewManager(m.logger, m.cfg)
 	m.ws.Configure(clientws.Session{
-		Handle:    m.app.Handle,
-		Workspace: m.app.Workspace,
-		Code:      m.cfg.WorkspaceCode,
-		Channel:   m.app.Current,
+		Handle:      m.app.Handle,
+		Workspace:   m.app.Workspace,
+		Code:        m.cfg.WorkspaceCode,
+		Channel:     m.app.Current,
+		DeviceToken: m.deviceToken,
 	})
 	m.ws.Start(m.ctx)
 }
@@ -513,6 +531,12 @@ func (m Model) handleWSEvent(evt clientws.Event) (tea.Model, tea.Cmd) {
 	case protocol.ServerIdentified:
 		payload, _ := protocol.DecodePayload[protocol.IdentifiedPayload](*evt.Envelope)
 		m.app.Handle = payload.User.Handle
+		m.setupInputs[3].SetValue(payload.User.Handle)
+		if m.profiles != nil && m.app.ServerURL != "" && m.app.Workspace != "" && m.cfg.WorkspaceCode != "" && payload.User.Handle != "" {
+			if err := m.profiles.Remember(m.app.ServerURL, m.app.Workspace, m.cfg.WorkspaceCode, payload.User.Handle); err != nil {
+				m.logger.Warn("remember workspace profile", "error", err)
+			}
+		}
 	case protocol.ServerWorkspaceJoined:
 		payload, _ := protocol.DecodePayload[protocol.WorkspaceJoinedPayload](*evt.Envelope)
 		m.app.Workspace = payload.Workspace.Name
@@ -669,8 +693,7 @@ func (m *Model) resizeViewport() {
 func (m Model) viewSetup() string {
 	style := lipgloss.NewStyle().Padding(1, 2)
 	var fields []string
-	labels := []string{"Handle", "Server URL", "Workspace"}
-	labels = append(labels, "Workspace Code")
+	labels := []string{"Server URL", "Workspace", "Workspace Code", "Handle"}
 	for i, input := range m.setupInputs {
 		row := fmt.Sprintf("%s\n%s", labels[i], input.View())
 		if i == m.setupStep {
@@ -678,7 +701,11 @@ func (m Model) viewSetup() string {
 		}
 		fields = append(fields, row)
 	}
-	return style.Render(m.banner() + "\n\n" + strings.Join(fields, "\n\n") + "\n\nPress Enter to connect")
+	note := "Press Enter to connect"
+	if remembered, ok := m.lookupRememberedHandle(); ok && remembered.Handle != "" {
+		note = "Press Enter to connect. This device already knows a handle for this workspace."
+	}
+	return style.Render(m.banner() + "\n\n" + strings.Join(fields, "\n\n") + "\n\n" + note)
 }
 
 func (m Model) viewChat() string {
@@ -818,6 +845,29 @@ func (m *Model) syncChannelCursor() {
 			return
 		}
 	}
+}
+
+func (m *Model) prefillRememberedHandle() {
+	remembered, ok := m.lookupRememberedHandle()
+	if !ok || remembered.Handle == "" {
+		return
+	}
+	if strings.TrimSpace(m.setupInputs[3].Value()) == "" || m.setupStep < 3 {
+		m.setupInputs[3].SetValue(remembered.Handle)
+	}
+}
+
+func (m Model) lookupRememberedHandle() (profile.WorkspaceProfile, bool) {
+	if m.profiles == nil {
+		return profile.WorkspaceProfile{}, false
+	}
+	serverURL := strings.TrimSpace(m.setupInputs[0].Value())
+	workspace := strings.TrimSpace(m.setupInputs[1].Value())
+	code := strings.TrimSpace(m.setupInputs[2].Value())
+	if serverURL == "" || workspace == "" || code == "" {
+		return profile.WorkspaceProfile{}, false
+	}
+	return m.profiles.Lookup(serverURL, workspace, code)
 }
 
 func waitForWSEvent(ch <-chan clientws.Event) tea.Cmd {

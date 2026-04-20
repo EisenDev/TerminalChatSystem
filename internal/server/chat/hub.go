@@ -2,6 +2,8 @@ package chat
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,34 +21,37 @@ import (
 )
 
 type Session struct {
-	id           string
-	user         models.User
-	workspace    models.Workspace
-	current      models.Channel
-	send         chan protocol.Envelope
-	connectedAt  time.Time
-	lastActivity time.Time
-	sendMu       sync.RWMutex
-	closed       bool
-	closeOnce    sync.Once
+	id            string
+	remoteIP      string
+	pendingHandle string
+	deviceToken   string
+	user          models.User
+	workspace     models.Workspace
+	current       models.Channel
+	send          chan protocol.Envelope
+	connectedAt   time.Time
+	lastActivity  time.Time
+	sendMu        sync.RWMutex
+	closed        bool
+	closeOnce     sync.Once
 }
 
 type Hub struct {
-	logger        *slog.Logger
-	store         store.Store
-	presence      *presence.Manager
-	callManager   call.Manager
-	defaultRoom   string
-	historyLimit  int
-	register      chan *Session
-	unregister    chan *Session
-	inbound       chan inboundEvent
-	shutdown      chan struct{}
+	logger       *slog.Logger
+	store        store.Store
+	presence     *presence.Manager
+	callManager  call.Manager
+	defaultRoom  string
+	historyLimit int
+	register     chan *Session
+	unregister   chan *Session
+	inbound      chan inboundEvent
+	shutdown     chan struct{}
 
-	mu                 sync.RWMutex
-	sessions           map[*Session]struct{}
+	mu                  sync.RWMutex
+	sessions            map[*Session]struct{}
 	sessionsByWorkspace map[string]map[*Session]struct{}
-	lastPingByUser     map[string]time.Time
+	lastPingByUser      map[string]time.Time
 }
 
 type inboundEvent struct {
@@ -107,9 +112,10 @@ func (h *Hub) HandleInbound(sess *Session, event protocol.Envelope) {
 	h.inbound <- inboundEvent{session: sess, event: event}
 }
 
-func NewSession(id string) *Session {
+func NewSession(id, remoteIP string) *Session {
 	return &Session{
 		id:          id,
+		remoteIP:    remoteIP,
 		send:        make(chan protocol.Envelope, 64),
 		connectedAt: time.Now().UTC(),
 	}
@@ -149,20 +155,23 @@ func (h *Hub) handleEvent(ctx context.Context, sess *Session, event protocol.Env
 		if err != nil {
 			return err
 		}
+		if strings.TrimSpace(payload.DeviceToken) == "" {
+			return errors.New("device token is required")
+		}
+		sess.deviceToken = strings.TrimSpace(payload.DeviceToken)
+		if strings.TrimSpace(payload.Handle) == "" {
+			sess.pendingHandle = ""
+			return nil
+		}
 		handle, err := auth.NormalizeHandle(payload.Handle)
 		if err != nil {
 			return err
 		}
-		user, err := h.store.EnsureUser(ctx, handle)
-		if err != nil {
-			return fmt.Errorf("ensure user: %w", err)
-		}
-		sess.user = user
-		sess.Deliver(protocol.MustEnvelope(protocol.ServerIdentified, protocol.IdentifiedPayload{User: user}))
+		sess.pendingHandle = handle
 		return nil
 
 	case protocol.ClientJoinWorkspace:
-		if sess.user.ID == "" {
+		if sess.deviceToken == "" {
 			return errors.New("identify first")
 		}
 		payload, err := protocol.DecodePayload[protocol.JoinWorkspacePayload](event)
@@ -177,38 +186,42 @@ func (h *Hub) handleEvent(ctx context.Context, sess *Session, event protocol.Env
 		if code == "" {
 			return errors.New("workspace code is required")
 		}
-		workspace, err := h.store.EnsureWorkspace(ctx, name, code, sess.user.Handle)
+		joinResult, err := h.store.JoinWorkspace(ctx, store.JoinWorkspaceRequest{
+			Name:              name,
+			Code:              code,
+			RequestedHandle:   sess.pendingHandle,
+			DeviceFingerprint: deviceFingerprint(sess.remoteIP, sess.deviceToken),
+		})
 		if err != nil {
-			return fmt.Errorf("ensure workspace: %w", err)
+			return fmt.Errorf("join workspace: %w", err)
 		}
-		if err := h.store.AddWorkspaceMember(ctx, workspace.ID, sess.user.ID); err != nil {
-			return fmt.Errorf("add workspace member: %w", err)
-		}
-		channel, err := h.store.EnsureChannel(ctx, workspace.ID, h.defaultRoom, models.ChannelKindPublic)
+		sess.user = joinResult.User
+		sess.workspace = joinResult.Workspace
+		sess.pendingHandle = sess.user.Handle
+		sess.Deliver(protocol.MustEnvelope(protocol.ServerIdentified, protocol.IdentifiedPayload{User: sess.user}))
+		channel, err := h.store.EnsureChannel(ctx, sess.workspace.ID, h.defaultRoom, models.ChannelKindPublic)
 		if err != nil {
 			return fmt.Errorf("ensure default channel: %w", err)
 		}
 		if err := h.store.AddChannelMember(ctx, channel.ID, sess.user.ID); err != nil {
 			return fmt.Errorf("add default channel member: %w", err)
 		}
-
-		sess.workspace = workspace
 		sess.current = channel
 		h.attachWorkspaceSession(sess)
 
-		channels, err := h.store.ListChannels(ctx, workspace.ID)
+		channels, err := h.store.ListChannels(ctx, sess.workspace.ID)
 		if err != nil {
 			return err
 		}
-		users, err := h.store.ListWorkspaceUsers(ctx, workspace.ID)
+		users, err := h.store.ListWorkspaceUsers(ctx, sess.workspace.ID)
 		if err != nil {
 			return err
 		}
-		pres := h.presence.SetOnline(ctx, workspace.ID, channel.Name, sess.user)
-		presences := h.presence.Snapshot(workspace.ID)
+		pres := h.presence.SetOnline(ctx, sess.workspace.ID, channel.Name, sess.user)
+		presences := h.presence.Snapshot(sess.workspace.ID)
 
 		sess.Deliver(protocol.MustEnvelope(protocol.ServerWorkspaceJoined, protocol.WorkspaceJoinedPayload{
-			Workspace:      workspace,
+			Workspace:      sess.workspace,
 			Channels:       channels,
 			Users:          users,
 			CurrentChannel: channel.Name,
@@ -217,8 +230,8 @@ func (h *Hub) handleEvent(ctx context.Context, sess *Session, event protocol.Env
 		sess.Deliver(protocol.MustEnvelope(protocol.ServerChannelsList, protocol.ChannelsListPayload{Channels: channels}))
 		sess.Deliver(protocol.MustEnvelope(protocol.ServerChannelJoined, protocol.ChannelJoinedPayload{Channel: channel}))
 		h.sendHistory(ctx, sess, channel.ID, channel.Name)
-		h.broadcastPresence(workspace.ID, presences)
-		h.broadcastSystem(workspace.ID, protocol.ServerUserJoined, protocol.UserEventPayload{Handle: sess.user.Handle, Channel: channel.Name})
+		h.broadcastPresence(sess.workspace.ID, presences)
+		h.broadcastSystem(sess.workspace.ID, protocol.ServerUserJoined, protocol.UserEventPayload{Handle: sess.user.Handle, Channel: channel.Name})
 		_ = pres
 		return nil
 
@@ -639,4 +652,9 @@ func (s *Session) Close() {
 		close(s.send)
 		s.sendMu.Unlock()
 	})
+}
+
+func deviceFingerprint(remoteIP, deviceToken string) string {
+	sum := sha256.Sum256([]byte(strings.TrimSpace(remoteIP) + "|" + strings.TrimSpace(deviceToken)))
+	return hex.EncodeToString(sum[:])
 }

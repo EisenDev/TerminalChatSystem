@@ -48,7 +48,7 @@ teamchat/
 ## Features In This MVP
 
 - Terminal-first chat UX
-- Handle + workspace join flow
+- Device-bound workspace join flow
 - Public channels
 - Keyboard channel switching from the sidebar
 - Real-time messaging
@@ -63,6 +63,7 @@ teamchat/
 - Structured logging
 - PostgreSQL persistence
 - Redis-ready presence cache and pubsub hooks
+- 7-day history visibility window for new joins
 - Future voice/call protocol and UI scaffolding
 
 ## Local Run
@@ -157,12 +158,14 @@ make run-client-docker
 
 Enter:
 
-- handle, such as `alice`
 - server URL, such as `http://localhost:8080`
 - workspace, such as `acme`
 - workspace code, such as `acme123`
+- handle, such as `alice`, only the first time that device joins
 
-The first user to join a brand-new workspace name creates it and sets its code. Later users must use the same workspace name plus the correct code. The client joins the default `lobby` channel and starts receiving real-time updates.
+The first user to join a brand-new workspace name creates it, sets its code, and becomes the workspace owner. Later users must use the same workspace name plus the correct code. The client stores a local device token under `~/.config/teamchat/profile.json`; the server combines that token with the connection IP into a hashed device fingerprint, so the raw IP is not exposed through the protocol or normal session logs. Once a device has joined successfully, the next join to that workspace can reuse the remembered handle automatically. The client joins the default `lobby` channel and starts receiving real-time updates.
+
+New joins only receive the latest 7 days of channel history.
 
 ### Local multi-client testing
 

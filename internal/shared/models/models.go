@@ -38,6 +38,7 @@ type Workspace struct {
 	ID          string    `json:"id"`
 	Name        string    `json:"name"`
 	OwnerHandle string    `json:"owner_handle,omitempty"`
+	OwnerUserID string    `json:"owner_user_id,omitempty"`
 	CreatedAt   time.Time `json:"created_at"`
 }
 
