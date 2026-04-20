@@ -6,13 +6,13 @@ RUN go mod download
 
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/teamchat-server ./cmd/server
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/teamchat ./cmd/client
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/termichat ./cmd/client
 RUN mkdir -p /out/package \
- && cp /out/teamchat /out/package/teamchat \
+ && cp /out/termichat /out/package/termichat \
  && cp packaging/linux-client/install.sh /out/package/install.sh \
  && cp packaging/linux-client/README.txt /out/package/README.txt \
- && chmod +x /out/package/teamchat /out/package/install.sh \
- && tar -czf /out/teamchat-client-linux-amd64.tar.gz -C /out/package .
+ && chmod +x /out/package/termichat /out/package/install.sh \
+ && tar -czf /out/termichat-linux-amd64.tar.gz -C /out/package .
 
 FROM ubuntu:24.04
 WORKDIR /app
@@ -23,7 +23,7 @@ COPY --from=build /out/teamchat-server /usr/local/bin/teamchat-server
 COPY migrations /app/migrations
 COPY scripts/seed.sql /app/scripts/seed.sql
 COPY public /app/public
-COPY --from=build /out/teamchat-client-linux-amd64.tar.gz /app/public/downloads/teamchat-client-linux-amd64.tar.gz
+COPY --from=build /out/termichat-linux-amd64.tar.gz /app/public/downloads/termichat-linux-amd64.tar.gz
 
 EXPOSE 18080
 

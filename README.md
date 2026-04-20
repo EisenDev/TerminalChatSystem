@@ -193,7 +193,7 @@ Build a Linux client binary:
 make build-client-linux
 ```
 
-Install it locally into `~/.local/bin/teamchat`:
+Install it locally into your normal command path:
 
 ```bash
 make install-client
@@ -208,7 +208,7 @@ make package-client-linux
 This creates:
 
 ```text
-dist/teamchat-client-linux-amd64.tar.gz
+dist/termichat-linux-amd64.tar.gz
 ```
 
 Your friend can unpack it and run:
