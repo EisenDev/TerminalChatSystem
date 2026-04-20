@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 set -eu
 
-BASE_URL=${TEAMCHAT_BASE_URL:-http://termichat.zeraynce.com:8080}
+BASE_URL=${TEAMCHAT_BASE_URL:-http://termichat.zeraynce.com}
 TMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TMP_DIR"' EXIT INT TERM
 
