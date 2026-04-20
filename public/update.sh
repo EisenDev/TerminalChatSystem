@@ -42,4 +42,5 @@ fi
 
 echo "Updated termichat at $TARGET_BIN"
 echo "Run:"
+echo "  rehash"
 echo "  termichat"

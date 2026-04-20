@@ -289,7 +289,7 @@ func (m Model) updateSetup(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.Type {
 	case tea.KeyEnter:
 		currentValue := strings.TrimSpace(m.setupInputs[m.setupStep].Value())
-		if m.setupStep == 0 && currentValue == "/mylobby" {
+		if m.setupStep == 0 && currentValue == "/list" {
 			if len(m.savedLobbies) == 0 {
 				m.app.Notification = "no saved lobbies on this device yet"
 				m.setupInputs[0].SetValue("")
@@ -769,7 +769,7 @@ func (m *Model) renderMessage(msg models.Message) string {
 
 func (m *Model) applySearchLobby() {
 	query := strings.ToLower(strings.TrimSpace(m.setupInputs[0].Value()))
-	if query == "" || query == "/mylobby" {
+	if query == "" || query == "/list" {
 		return
 	}
 	for _, item := range m.savedLobbies {
@@ -798,7 +798,7 @@ func (m Model) viewSetup() string {
 	var fields []string
 	labels := []string{"Search Lobby (Optional)", "Lobby Name", "Lobby Code", "Username"}
 	visibleInputs := 3
-	if m.setupStep >= 3 || strings.TrimSpace(m.setupInputs[3].Value()) != "" {
+	if m.setupStep >= 3 {
 		visibleInputs = 4
 	}
 	for i := 0; i < visibleInputs; i++ {
@@ -809,7 +809,7 @@ func (m Model) viewSetup() string {
 		}
 		fields = append(fields, row)
 	}
-	note := "Press Enter to continue. Type /mylobby in Search Lobby to browse remembered lobbies."
+	note := "Press Enter to continue. Type /list in Search Lobby to browse remembered lobbies."
 	if remembered, ok := m.lookupRememberedHandle(); ok && remembered.Handle != "" {
 		note = "Press Enter on Lobby Code to auto-join. This device already knows your username for this lobby."
 	}
@@ -953,7 +953,7 @@ func (m Model) emoteOverlay() string {
 }
 
 func (m Model) lobbyBrowser() string {
-	lines := []string{"MY LOBBIES", "Use Up/Down + Enter"}
+	lines := []string{"LOBBY LIST", "Use Up/Down + Enter"}
 	if len(m.savedLobbies) == 0 {
 		lines = append(lines, "", "No saved lobbies yet.")
 	} else {
