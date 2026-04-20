@@ -216,7 +216,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 		if key.Matches(msg, m.keys.Help) {
-			m.showHelp = !m.showHelp
+			m.showCommandPanel = !m.showCommandPanel
+			m.showHelp = m.showCommandPanel
+			if !m.showCommandPanel {
+				m.showEmotePicker = false
+			}
 			return m, nil
 		}
 		if key.Matches(msg, m.keys.Reconnect) && m.phase == phaseChat {
@@ -379,6 +383,16 @@ func (m *Model) connectFromSetup() {
 
 func (m Model) updateChatKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.Type {
+	case tea.KeyEsc:
+		if m.showEmotePicker {
+			m.showEmotePicker = false
+			return m, nil
+		}
+		if m.showCommandPanel {
+			m.showCommandPanel = false
+			m.showHelp = false
+			return m, nil
+		}
 	case tea.KeyEnter:
 		text := strings.TrimSpace(m.input.Value())
 		if text == "" {
@@ -852,12 +866,6 @@ func (m Model) viewChat() string {
 	if m.activeEffect != nil {
 		view = overlayBox(view, m.effectOverlay())
 	}
-	if m.showHelp {
-		view = overlayBox(view, m.helpOverlay())
-	}
-	if m.showEmotePicker {
-		view = overlayBox(view, m.emoteOverlay())
-	}
 	return view
 }
 
@@ -886,7 +894,16 @@ func (m Model) renderLobbyPanel() string {
 }
 
 func (m Model) renderCommandPad() string {
-	return "/commands --help"
+	lines := []string{"/commands --help"}
+	if m.showCommandPanel {
+		lines = append(lines, "")
+		lines = append(lines, m.commandGuideLines()...)
+	}
+	if m.showEmotePicker {
+		lines = append(lines, "", "Emotes")
+		lines = append(lines, m.emotePickerLines()...)
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (m Model) renderUsers() string {
@@ -912,36 +929,33 @@ func (m Model) renderUsers() string {
 }
 
 func (m Model) helpView() string {
-	if m.showHelp {
-		return "overlay open"
+	if m.showCommandPanel {
+		return "commands open"
 	}
 	return ""
 }
 
-func (m Model) helpOverlay() string {
-	lines := []string{
-		"COMMANDS",
-		"/back              return to lobby select",
-		"/commands --help   open command guide",
-		"/join <channel>    switch channel",
-		"/dm <handle>       scaffold direct channel",
-		"/users             refresh coworker list",
-		"/channels          refresh channels",
-		"/ping <h|all> [--flash|--fku]",
-		"/ping <h> --flash  flash effect ping",
-		"/effects <on|off>  local effect toggle",
-		"/muteeffects <h>   mute one sender's effects",
-		"/chandle <name>    change handle live",
-		"/emote             open emote picker",
-		"/me <action>       send action message",
-		"/clear             clear local current view",
-		"/quit              exit",
+func (m Model) commandGuideLines() []string {
+	return []string{
+		"/back",
+		"/commands --help",
+		"/join <channel>",
+		"/dm <username>",
+		"/users",
+		"/channels",
+		"/ping <u|all> [--flash|--fku]",
+		"/effects <on|off>",
+		"/muteeffects <username>",
+		"/chandle <name>",
+		"/emote",
+		"/me <action>",
+		"/clear",
+		"/quit",
 	}
-	return lipgloss.NewStyle().Width(min(64, max(40, m.width/2))).Padding(1, 2).Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("81")).Render(strings.Join(lines, "\n"))
 }
 
-func (m Model) emoteOverlay() string {
-	lines := []string{"EMOTES", "Use Up/Down + Enter or press 1-9"}
+func (m Model) emotePickerLines() []string {
+	lines := []string{"Use Up/Down + Enter or press 1-9"}
 	for i, item := range emoteCatalog {
 		line := fmt.Sprintf("%d. %-10s %s", item.Number, item.Name, item.Frames[0])
 		if i == m.emoteCursor {
@@ -949,7 +963,7 @@ func (m Model) emoteOverlay() string {
 		}
 		lines = append(lines, line)
 	}
-	return lipgloss.NewStyle().Width(min(64, max(40, m.width/2))).Padding(1, 2).Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("81")).Render(strings.Join(lines, "\n"))
+	return lines
 }
 
 func (m Model) lobbyBrowser() string {
