@@ -24,6 +24,7 @@ if [ -n "${GHCR_USERNAME:-}" ] && [ -n "${GHCR_TOKEN:-}" ]; then
 fi
 
 docker compose -f docker-compose.prod.yml up -d postgres redis
+docker image rm ghcr.io/eisendev/terminalchatsystem:latest >/dev/null 2>&1 || true
 docker compose -f docker-compose.prod.yml pull app
 
 until docker compose -f docker-compose.prod.yml exec -T postgres pg_isready -U teamchat -d teamchat >/dev/null 2>&1; do
@@ -36,4 +37,4 @@ docker compose -f docker-compose.prod.yml exec -T postgres psql -U teamchat -d t
 docker compose -f docker-compose.prod.yml exec -T postgres psql -U teamchat -d teamchat < migrations/000004_device_accounts.up.sql
 docker compose -f docker-compose.prod.yml exec -T postgres psql -U teamchat -d teamchat < scripts/seed.sql
 
-docker compose -f docker-compose.prod.yml up -d app
+docker compose -f docker-compose.prod.yml up -d --force-recreate app
