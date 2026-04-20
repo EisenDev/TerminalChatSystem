@@ -2,13 +2,25 @@
 set -eu
 
 APP_DIR=${APP_DIR:-/opt/teamchat}
+REPO_URL=${REPO_URL:-https://github.com/EisenDev/TerminalChatSystem.git}
+BRANCH=${BRANCH:-main}
 
-mkdir -p "$APP_DIR"
+sudo mkdir -p "$(dirname "$APP_DIR")"
+
+if [ ! -d "$APP_DIR/.git" ]; then
+  sudo rm -rf "$APP_DIR"
+  git clone --branch "$BRANCH" "$REPO_URL" "$APP_DIR"
+else
+  cd "$APP_DIR"
+  git fetch origin "$BRANCH"
+  git checkout "$BRANCH"
+  git reset --hard "origin/$BRANCH"
+fi
+
 cd "$APP_DIR"
 
-if [ ! -f docker-compose.prod.yml ]; then
-  echo "docker-compose.prod.yml not found in $APP_DIR"
-  exit 1
+if [ -n "${GHCR_USERNAME:-}" ] && [ -n "${GHCR_TOKEN:-}" ]; then
+  printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
 fi
 
 docker compose -f docker-compose.prod.yml pull
