@@ -100,10 +100,13 @@ type Model struct {
 type wsEventMsg clientws.Event
 
 func NewModel(cfg config.Client, logger *slog.Logger) Model {
+	search := textinput.New()
+	search.Placeholder = "search lobby (optional)"
+	search.Focus()
+
 	lobby := textinput.New()
 	lobby.Placeholder = "lobby name"
 	lobby.SetValue(cfg.Workspace)
-	lobby.Focus()
 
 	lobbyCode := textinput.New()
 	lobbyCode.Placeholder = "lobby code"
@@ -138,7 +141,7 @@ func NewModel(cfg config.Client, logger *slog.Logger) Model {
 		ctx:      ctx,
 		cancel:   cancel,
 		setupInputs: []textinput.Model{
-			lobby, lobbyCode, username,
+			search, lobby, lobbyCode, username,
 		},
 		input:             input,
 		viewport:          vp,
@@ -272,10 +275,11 @@ func (m Model) updateSetup(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			selected := m.savedLobbies[m.lobbyCursor]
-			m.setupInputs[0].SetValue(selected.LobbyName)
-			m.setupInputs[1].SetValue(selected.LobbyCode)
-			m.setupInputs[2].SetValue(selected.Handle)
+			m.setupInputs[1].SetValue(selected.LobbyName)
+			m.setupInputs[2].SetValue(selected.LobbyCode)
+			m.setupInputs[3].SetValue(selected.Handle)
 			m.showLobbyBrowser = false
+			m.setupStep = 2
 			m.connectFromSetup()
 			return m, waitForWSEvent(m.ws.Events())
 		}
@@ -296,28 +300,35 @@ func (m Model) updateSetup(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if m.setupStep == 0 {
+			m.applySearchLobby()
 			m.setupInputs[m.setupStep].Blur()
 			m.setupStep++
 			m.setupInputs[m.setupStep].Focus()
 			return m, textinput.Blink
 		}
 		if m.setupStep == 1 {
+			m.setupInputs[m.setupStep].Blur()
+			m.setupStep = 2
+			m.setupInputs[m.setupStep].Focus()
+			return m, textinput.Blink
+		}
+		if m.setupStep == 2 {
 			if remembered, ok := m.lookupRememberedHandle(); ok && remembered.Handle != "" {
-				m.setupInputs[2].SetValue(remembered.Handle)
+				m.setupInputs[3].SetValue(remembered.Handle)
 				m.connectFromSetup()
 				return m, waitForWSEvent(m.ws.Events())
 			}
 			m.setupInputs[m.setupStep].Blur()
-			m.setupStep = 2
+			m.setupStep = 3
 			m.setupInputs[m.setupStep].Focus()
 			return m, textinput.Blink
 		}
 		m.connectFromSetup()
 		return m, waitForWSEvent(m.ws.Events())
 	case tea.KeyTab, tea.KeyShiftTab, tea.KeyUp, tea.KeyDown:
-		visibleInputs := 2
-		if m.setupStep >= 2 || strings.TrimSpace(m.setupInputs[2].Value()) != "" {
-			visibleInputs = 3
+		visibleInputs := 3
+		if m.setupStep >= 3 || strings.TrimSpace(m.setupInputs[3].Value()) != "" {
+			visibleInputs = 4
 		}
 		delta := 1
 		if msg.Type == tea.KeyShiftTab || msg.Type == tea.KeyUp {
@@ -350,13 +361,13 @@ func (m *Model) reconnect() {
 
 func (m *Model) connectFromSetup() {
 	m.app.ServerURL = strings.TrimSpace(m.cfg.ServerURL)
-	m.app.Workspace = strings.TrimSpace(m.setupInputs[0].Value())
-	m.cfg.WorkspaceCode = strings.TrimSpace(m.setupInputs[1].Value())
-	m.app.Handle = strings.TrimSpace(m.setupInputs[2].Value())
+	m.app.Workspace = strings.TrimSpace(m.setupInputs[1].Value())
+	m.cfg.WorkspaceCode = strings.TrimSpace(m.setupInputs[2].Value())
+	m.app.Handle = strings.TrimSpace(m.setupInputs[3].Value())
 	if m.app.Handle == "" {
 		if remembered, ok := m.lookupRememberedHandle(); ok {
 			m.app.Handle = remembered.Handle
-			m.setupInputs[2].SetValue(remembered.Handle)
+			m.setupInputs[3].SetValue(remembered.Handle)
 		}
 	}
 	m.app.Current = m.cfg.DefaultChannel
@@ -604,7 +615,7 @@ func (m Model) handleWSEvent(evt clientws.Event) (tea.Model, tea.Cmd) {
 	case protocol.ServerIdentified:
 		payload, _ := protocol.DecodePayload[protocol.IdentifiedPayload](*evt.Envelope)
 		m.app.Handle = payload.User.Handle
-		m.setupInputs[2].SetValue(payload.User.Handle)
+		m.setupInputs[3].SetValue(payload.User.Handle)
 		if m.profiles != nil && m.app.ServerURL != "" && m.app.Workspace != "" && m.cfg.WorkspaceCode != "" && payload.User.Handle != "" {
 			if err := m.profiles.Remember(m.app.ServerURL, m.app.Workspace, m.cfg.WorkspaceCode, payload.User.Handle); err != nil {
 				m.logger.Warn("remember workspace profile", "error", err)
@@ -756,6 +767,24 @@ func (m *Model) renderMessage(msg models.Message) string {
 	return lipgloss.NewStyle().Width(contentWidth).Align(lipgloss.Left).Render(block)
 }
 
+func (m *Model) applySearchLobby() {
+	query := strings.ToLower(strings.TrimSpace(m.setupInputs[0].Value()))
+	if query == "" || query == "/mylobby" {
+		return
+	}
+	for _, item := range m.savedLobbies {
+		if strings.Contains(strings.ToLower(item.LobbyName), query) {
+			m.setupInputs[1].SetValue(item.LobbyName)
+			m.setupInputs[2].SetValue(item.LobbyCode)
+			if item.Handle != "" {
+				m.setupInputs[3].SetValue(item.Handle)
+			}
+			m.app.Notification = "matched remembered lobby"
+			return
+		}
+	}
+}
+
 func (m *Model) resizeViewport() {
 	leftWidth := min(30, max(24, m.width/4))
 	rightWidth := leftWidth
@@ -767,11 +796,10 @@ func (m *Model) resizeViewport() {
 func (m Model) viewSetup() string {
 	style := lipgloss.NewStyle().Padding(1, 2)
 	var fields []string
-	fields = append(fields, fmt.Sprintf("Server\n%s", lipgloss.NewStyle().Foreground(lipgloss.Color("81")).Render(strings.TrimSpace(m.cfg.ServerURL))))
-	labels := []string{"Lobby Name", "Lobby Code", "Username"}
-	visibleInputs := 2
-	if m.setupStep >= 2 || strings.TrimSpace(m.setupInputs[2].Value()) != "" {
-		visibleInputs = 3
+	labels := []string{"Search Lobby (Optional)", "Lobby Name", "Lobby Code", "Username"}
+	visibleInputs := 3
+	if m.setupStep >= 3 || strings.TrimSpace(m.setupInputs[3].Value()) != "" {
+		visibleInputs = 4
 	}
 	for i := 0; i < visibleInputs; i++ {
 		input := m.setupInputs[i]
@@ -781,7 +809,7 @@ func (m Model) viewSetup() string {
 		}
 		fields = append(fields, row)
 	}
-	note := "Press Enter to continue. Type /mylobby in Lobby Name to browse remembered lobbies."
+	note := "Press Enter to continue. Type /mylobby in Search Lobby to browse remembered lobbies."
 	if remembered, ok := m.lookupRememberedHandle(); ok && remembered.Handle != "" {
 		note = "Press Enter on Lobby Code to auto-join. This device already knows your username for this lobby."
 	}
@@ -795,7 +823,7 @@ func (m Model) viewSetup() string {
 func (m Model) viewChat() string {
 	top := lipgloss.NewStyle().Bold(true).Render(m.banner())
 	statusBar := lipgloss.NewStyle().Foreground(lipgloss.Color("81")).Render(
-		fmt.Sprintf("LOBBY > %s  status:%s  username:%s", m.app.Workspace, m.app.StatusText, m.app.Handle),
+		fmt.Sprintf("status:%s", m.app.StatusText),
 	)
 
 	leftWidth := min(30, max(24, m.width/4))
@@ -817,7 +845,7 @@ func (m Model) viewChat() string {
 	}
 
 	footer := lipgloss.NewStyle().BorderTop(true).Render(
-		callLine + "Input\n" + m.input.View() + "\n" + m.app.Notification + "\n" + m.helpView(),
+		callLine + "Input\n" + m.input.View() + "\n" + m.app.Notification,
 	)
 
 	view := lipgloss.JoinVertical(lipgloss.Left, top, statusBar, body, footer)
@@ -853,41 +881,12 @@ func (m Model) renderChannels() string {
 func (m Model) renderLobbyPanel() string {
 	lines := []string{
 		lipgloss.NewStyle().Foreground(lipgloss.Color("81")).Bold(true).Render("> " + m.app.Workspace),
-		"",
-		"USERNAME",
-		colorHandle(m.app.Handle).Render(m.app.Handle),
-		"",
-		"Use /back to return to lobby select.",
-		"Use /commands --help for the full guide.",
 	}
 	return strings.Join(lines, "\n")
 }
 
 func (m Model) renderCommandPad() string {
-	if m.showCommandPanel {
-		return strings.Join([]string{
-			"/commands --help",
-			"/back",
-			"/users",
-			"/channels",
-			"/join <channel>",
-			"/dm <username>",
-			"/ping <username>",
-			"/chandle <name>",
-			"/emote",
-			"/clear",
-			"/quit",
-		}, "\n")
-	}
-	return strings.Join([]string{
-		"/commands --help",
-		"",
-		"Quick actions:",
-		"/users",
-		"/ping <username>",
-		"/emote",
-		"/back",
-	}, "\n")
+	return "/commands --help"
 }
 
 func (m Model) renderUsers() string {
@@ -916,7 +915,7 @@ func (m Model) helpView() string {
 	if m.showHelp {
 		return "overlay open"
 	}
-	return "Commands: /commands --help /back /join /dm /users /channels /ping /effects /muteeffects /chandle /emote /me /clear /quit"
+	return ""
 }
 
 func (m Model) helpOverlay() string {
@@ -929,6 +928,7 @@ func (m Model) helpOverlay() string {
 		"/users             refresh coworker list",
 		"/channels          refresh channels",
 		"/ping <h|all> [--flash|--fku]",
+		"/ping <h> --flash  flash effect ping",
 		"/effects <on|off>  local effect toggle",
 		"/muteeffects <h>   mute one sender's effects",
 		"/chandle <name>    change handle live",
@@ -1008,8 +1008,8 @@ func (m *Model) prefillRememberedHandle() {
 	if !ok || remembered.Handle == "" {
 		return
 	}
-	if strings.TrimSpace(m.setupInputs[2].Value()) == "" || m.setupStep < 2 {
-		m.setupInputs[2].SetValue(remembered.Handle)
+	if strings.TrimSpace(m.setupInputs[3].Value()) == "" || m.setupStep < 3 {
+		m.setupInputs[3].SetValue(remembered.Handle)
 	}
 }
 
@@ -1018,8 +1018,8 @@ func (m Model) lookupRememberedHandle() (profile.WorkspaceProfile, bool) {
 		return profile.WorkspaceProfile{}, false
 	}
 	serverURL := strings.TrimSpace(m.cfg.ServerURL)
-	workspace := strings.TrimSpace(m.setupInputs[0].Value())
-	code := strings.TrimSpace(m.setupInputs[1].Value())
+	workspace := strings.TrimSpace(m.setupInputs[1].Value())
+	code := strings.TrimSpace(m.setupInputs[2].Value())
 	if serverURL == "" || workspace == "" || code == "" {
 		return profile.WorkspaceProfile{}, false
 	}
@@ -1027,19 +1027,7 @@ func (m Model) lookupRememberedHandle() (profile.WorkspaceProfile, bool) {
 }
 
 func (m Model) shouldAutoConnect() bool {
-	if strings.TrimSpace(m.cfg.ServerURL) == "" {
-		return false
-	}
-	if strings.TrimSpace(m.setupInputs[1].Value()) == "" {
-		return false
-	}
-	if strings.TrimSpace(m.setupInputs[0].Value()) == "" {
-		return false
-	}
-	if remembered, ok := m.lookupRememberedHandle(); ok && remembered.Handle != "" {
-		return true
-	}
-	return strings.TrimSpace(m.setupInputs[2].Value()) != ""
+	return false
 }
 
 func waitForWSEvent(ch <-chan clientws.Event) tea.Cmd {
