@@ -7,6 +7,7 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/teamchat-server ./cmd/server
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/termichat ./cmd/client
+RUN CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o /out/termichat.exe ./cmd/client
 RUN mkdir -p /out/package \
  && cp /out/termichat /out/package/termichat \
  && cp packaging/linux-client/install.sh /out/package/install.sh \
@@ -24,6 +25,8 @@ COPY migrations /app/migrations
 COPY scripts/seed.sql /app/scripts/seed.sql
 COPY public /app/public
 COPY --from=build /out/termichat-linux-amd64.tar.gz /app/public/downloads/termichat-linux-amd64.tar.gz
+COPY --from=build /out/termichat.exe /app/public/downloads/termichat-windows-amd64.exe
+COPY packaging/windows-client/install.ps1 /app/public/install.ps1
 
 EXPOSE 18080
 

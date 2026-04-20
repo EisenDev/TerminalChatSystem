@@ -34,6 +34,10 @@ func NewServer(logger *slog.Logger, hub *chat.Hub, cfg config.Server) *Server {
 		mux.HandleFunc("/install.sh", func(w http.ResponseWriter, r *http.Request) {
 			http.ServeFile(w, r, filepath.Join(publicDir, "install.sh"))
 		})
+		mux.HandleFunc("/install.ps1", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			http.ServeFile(w, r, filepath.Join(publicDir, "install.ps1"))
+		})
 		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.Path != "/" {
 				http.NotFound(w, r)
