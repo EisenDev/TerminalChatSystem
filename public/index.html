@@ -6,87 +6,101 @@
   <title>TermiChat</title>
   <style>
     :root {
-      --bg: #0b0f14;
-      --panel: #111824;
-      --panel-2: #171f2d;
-      --text: #e8eef7;
-      --muted: #92a0b5;
-      --accent: #7df9ff;
-      --accent-2: #ffcf5a;
+      --bg: #07131a;
+      --panel: #0f1824;
+      --panel-2: #121e2d;
+      --text: #ecf7ff;
+      --muted: #9eb0bf;
       --line: rgba(255,255,255,0.12);
+      --cyan: #68dcff;
+      --cyan-2: #b9efff;
       --good: #7cf29a;
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
       font-family: "JetBrains Mono", "Fira Code", monospace;
-      background:
-        radial-gradient(circle at top left, rgba(125,249,255,0.14), transparent 32%),
-        radial-gradient(circle at top right, rgba(255,207,90,0.12), transparent 28%),
-        linear-gradient(180deg, #0a0f14, #0f1520 55%, #0a1119);
       color: var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(104,220,255,0.14), transparent 24%),
+        linear-gradient(180deg, #061017, #0a1620 50%, #08131b);
       min-height: 100vh;
     }
-    .wrap { max-width: 1080px; margin: 0 auto; padding: 40px 20px 80px; }
-    .hero {
+    .wrap {
+      width: min(760px, calc(100vw - 32px));
+      margin: 0 auto;
+      padding: 36px 0 80px;
+    }
+    .hero, .card {
       border: 1px solid var(--line);
-      background: linear-gradient(180deg, rgba(17,24,36,0.9), rgba(11,15,20,0.92));
+      background: rgba(15, 24, 36, 0.9);
       border-radius: 24px;
-      padding: 28px;
-      box-shadow: 0 20px 60px rgba(0,0,0,0.35);
+      box-shadow: 0 24px 60px rgba(0,0,0,0.28);
     }
-    .label { color: var(--accent); font-size: 13px; text-transform: uppercase; letter-spacing: 0.18em; }
-    pre.logo {
-      margin: 18px 0 10px;
-      color: #f7fbff;
-      font-size: clamp(12px, 1.3vw, 18px);
-      line-height: 0.95;
-      overflow: auto;
+    .hero { padding: 24px; }
+    .eyebrow {
+      color: var(--cyan);
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: .18em;
+      margin-bottom: 14px;
     }
-    .sub { color: var(--muted); max-width: 720px; line-height: 1.6; }
-    .actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 24px; }
-    .btn {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      padding: 14px 18px;
-      border-radius: 14px;
-      text-decoration: none;
-      border: 1px solid var(--line);
-      color: var(--text);
-      background: var(--panel-2);
-      min-width: 200px;
-    }
-    .btn.primary {
-      background: linear-gradient(135deg, var(--accent), #4dbbff);
-      color: #041018;
-      border-color: transparent;
-      font-weight: 700;
-    }
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    .brand {
+      display: flex;
+      align-items: flex-start;
       gap: 18px;
-      margin-top: 24px;
+      margin-bottom: 14px;
     }
-    .card {
-      border: 1px solid var(--line);
-      background: rgba(17,24,36,0.86);
-      border-radius: 18px;
-      padding: 20px;
+    .icon {
+      position: relative;
+      width: 62px;
+      height: 62px;
+      animation: spin 3.5s steps(8) infinite;
+      transform-origin: center;
+      flex: 0 0 auto;
+      margin-top: 8px;
     }
-    h2, h3 { margin-top: 0; }
-    code, pre.code {
-      background: rgba(0,0,0,0.28);
-      border: 1px solid rgba(255,255,255,0.08);
-      border-radius: 14px;
-      display: block;
-      padding: 14px;
-      overflow: auto;
-      color: #dff8ff;
+    .icon::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(var(--cyan), var(--cyan)) 0 0/18px 18px no-repeat,
+        linear-gradient(var(--cyan-2), var(--cyan-2)) 22px 0/18px 18px no-repeat,
+        linear-gradient(var(--cyan), var(--cyan)) 44px 0/18px 18px no-repeat,
+        linear-gradient(var(--cyan-2), var(--cyan-2)) 0 22px/18px 18px no-repeat,
+        linear-gradient(#09131a, #09131a) 22px 22px/18px 18px no-repeat,
+        linear-gradient(var(--cyan-2), var(--cyan-2)) 44px 22px/18px 18px no-repeat,
+        linear-gradient(var(--cyan), var(--cyan)) 0 44px/18px 18px no-repeat,
+        linear-gradient(var(--cyan-2), var(--cyan-2)) 22px 44px/18px 18px no-repeat,
+        linear-gradient(var(--cyan), var(--cyan)) 44px 44px/18px 18px no-repeat;
+      filter: drop-shadow(0 0 10px rgba(104,220,255,0.32));
+      border-radius: 8px;
     }
-    ul { padding-left: 18px; color: var(--muted); }
-    li { margin-bottom: 10px; }
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    pre.logo {
+      margin: 0;
+      color: #f4fbff;
+      font-size: clamp(10px, 1.45vw, 16px);
+      line-height: .92;
+      overflow: hidden;
+      white-space: pre;
+    }
+    .sub {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.7;
+    }
+    .stack {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 18px;
+      margin-top: 20px;
+    }
+    .card { padding: 20px; }
     .pill {
       display: inline-block;
       padding: 5px 10px;
@@ -97,56 +111,81 @@
       font-size: 12px;
       margin-bottom: 12px;
     }
+    h2 {
+      margin: 0 0 12px;
+      font-size: 34px;
+    }
+    h3 {
+      margin: 0 0 12px;
+      font-size: 16px;
+    }
+    code, pre.code {
+      display: block;
+      margin: 0;
+      padding: 14px;
+      border-radius: 14px;
+      background: rgba(0,0,0,0.26);
+      border: 1px solid rgba(255,255,255,0.08);
+      color: #dff8ff;
+      overflow: auto;
+    }
+    p, li { color: var(--muted); }
+    ul {
+      margin: 0;
+      padding-left: 18px;
+    }
+    li { margin-bottom: 10px; }
   </style>
 </head>
 <body>
-  <div class="wrap">
+  <main class="wrap">
     <section class="hero">
-      <div class="label">Terminal Ops</div>
-      <pre class="logo">████████╗███████╗██████╗ ███╗   ███╗██╗ ██████╗██╗  ██╗ █████╗ ████████╗
+      <div class="eyebrow">Terminal Ops</div>
+      <div class="brand">
+        <div class="icon" aria-hidden="true"></div>
+        <pre class="logo">████████╗███████╗██████╗ ███╗   ███╗██╗ ██████╗██╗  ██╗ █████╗ ████████╗
 ╚══██╔══╝██╔════╝██╔══██╗████╗ ████║██║██╔════╝██║  ██║██╔══██╗╚══██╔══╝
    ██║   █████╗  ██████╔╝██╔████╔██║██║██║     ███████║███████║   ██║
    ██║   ██╔══╝  ██╔══██╗██║╚██╔╝██║██║██║     ██╔══██║██╔══██║   ██║
    ██║   ███████╗██║  ██║██║ ╚═╝ ██║██║╚██████╗██║  ██║██║  ██║   ██║
    ╚═╝   ╚══════╝╚═╝  ╚═╝╚═╝     ╚═╝╚═╝ ╚═════╝╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝</pre>
-      <p class="sub">
-        TermiChat is a multiplayer terminal chat client. Download the Linux package, install it to your shell, then connect to the live workspace server with a single command.
-      </p>
-      <div class="actions">
-        <a class="btn primary" href="/downloads/termichat-linux-amd64.tar.gz">Download Linux Package</a>
-        <a class="btn" href="/install.sh">Download install.sh</a>
       </div>
+      <p class="sub">
+        TermiChat is a multiplayer terminal lobby chat. Install it with one curl command, run <code>termichat</code>, then join or create your lobby directly from the terminal app.
+      </p>
+      <!-- Download buttons intentionally hidden for now. Fast path install is the only published flow. -->
     </section>
 
-    <div class="grid">
+    <section class="stack">
       <section class="card">
-        <div class="pill">Fast path</div>
-        <h2>Install</h2>
+        <div class="pill">Install</div>
+        <h3>Fast path</h3>
         <pre class="code">curl -fsSL http://termichat.zeraynce.com/install.sh | sh</pre>
-        <h3>Or manual</h3>
-        <pre class="code">tar -xzf termichat-linux-amd64.tar.gz
-sh install.sh</pre>
       </section>
 
       <section class="card">
         <div class="pill">Run</div>
-        <h2>Open the chat</h2>
+        <h3>Open the chat</h3>
         <pre class="code">termichat</pre>
+      </section>
+
+      <section class="card">
+        <div class="pill">How To Use</div>
         <ul>
-          <li>The installer saves the server and workspace config automatically.</li>
-          <li>First join on a device asks for your handle.</li>
-          <li>Next join on the same device remembers that handle and auto-connects.</li>
-          <li>New joins only see the latest 7 days of logs.</li>
+          <li>Enter your lobby name first, then your lobby code.</li>
+          <li>If this device already joined that lobby before, TermiChat auto-joins without asking for your username again.</li>
+          <li>If it is a new lobby or a new device, you will be asked for a username before entering.</li>
+          <li>Type <code>/mylobby</code> in the lobby name field to browse the lobbies already remembered on this device.</li>
         </ul>
       </section>
 
       <section class="card">
         <div class="pill">Troubleshooting</div>
-        <h2>If <code>termichat</code> is not found</h2>
+        <p>If <code>termichat</code> is not found in your current shell, run:</p>
         <pre class="code">export PATH="$HOME/.local/bin:$PATH"</pre>
-        <p class="sub">Then run <code>termichat</code> again in the same terminal. New shells will pick it up automatically after install.</p>
+        <p>Then run <code>termichat</code> again in the same terminal.</p>
       </section>
-    </div>
-  </div>
+    </section>
+  </main>
 </body>
 </html>

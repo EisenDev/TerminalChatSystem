@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 )
@@ -24,6 +25,14 @@ type dataFile struct {
 type Store struct {
 	path string
 	data dataFile
+}
+
+type SavedLobby struct {
+	ServerURL string
+	LobbyName string
+	LobbyCode string
+	Handle    string
+	UpdatedAt time.Time
 }
 
 func Open() (*Store, error) {
@@ -77,6 +86,27 @@ func (s *Store) Remember(serverURL, workspace, code, handle string) error {
 		UpdatedAt: time.Now().UTC(),
 	}
 	return s.Save()
+}
+
+func (s *Store) List() []SavedLobby {
+	items := make([]SavedLobby, 0, len(s.data.Workspaces))
+	for key, item := range s.data.Workspaces {
+		parts := strings.SplitN(key, "|", 3)
+		if len(parts) != 3 {
+			continue
+		}
+		items = append(items, SavedLobby{
+			ServerURL: parts[0],
+			LobbyName: parts[1],
+			LobbyCode: parts[2],
+			Handle:    item.Handle,
+			UpdatedAt: item.UpdatedAt,
+		})
+	}
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].UpdatedAt.After(items[j].UpdatedAt)
+	})
+	return items
 }
 
 func (s *Store) Save() error {
