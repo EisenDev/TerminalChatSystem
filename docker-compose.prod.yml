@@ -1,0 +1,31 @@
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: teamchat
+      POSTGRES_USER: teamchat
+      POSTGRES_PASSWORD: teamchat
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7
+    restart: unless-stopped
+
+  app:
+    image: ghcr.io/eisendev/terminalchatsystem:latest
+    restart: unless-stopped
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      CHAT_DATABASE_URL: postgres://teamchat:teamchat@postgres:5432/teamchat?sslmode=disable
+      CHAT_REDIS_ADDR: redis:6379
+      CHAT_HTTP_ADDR: :18080
+    ports:
+      - "18080:18080"
+
+volumes:
+  postgres_data:
+

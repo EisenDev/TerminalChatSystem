@@ -1,0 +1,8 @@
+.DS_Store
+.env
+dist/
+client
+server
+*.log
+*.tar.gz
+
