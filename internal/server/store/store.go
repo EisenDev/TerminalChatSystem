@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -12,7 +13,7 @@ import (
 
 type Store interface {
 	EnsureUser(ctx context.Context, handle string) (models.User, error)
-	EnsureWorkspace(ctx context.Context, name string) (models.Workspace, error)
+	EnsureWorkspace(ctx context.Context, name, code, ownerHandle string) (models.Workspace, error)
 	EnsureChannel(ctx context.Context, workspaceID, name string, kind models.ChannelKind) (models.Channel, error)
 	AddWorkspaceMember(ctx context.Context, workspaceID, userID string) error
 	AddChannelMember(ctx context.Context, channelID, userID string) error
@@ -43,15 +44,36 @@ func (s *Postgres) EnsureUser(ctx context.Context, handle string) (models.User, 
 	return user, err
 }
 
-func (s *Postgres) EnsureWorkspace(ctx context.Context, name string) (models.Workspace, error) {
+func (s *Postgres) EnsureWorkspace(ctx context.Context, name, code, ownerHandle string) (models.Workspace, error) {
 	name = strings.ToLower(strings.TrimSpace(name))
+	code = strings.TrimSpace(code)
+	ownerHandle = strings.ToLower(strings.TrimSpace(ownerHandle))
+	if code == "" {
+		return models.Workspace{}, fmt.Errorf("workspace code is required")
+	}
+
 	query := `
-		insert into workspaces (name)
-		values ($1)
-		on conflict (name) do update set name = excluded.name
-		returning id::text, name, created_at`
+		insert into workspaces (name, join_code, owner_handle)
+		values ($1, $2, $3)
+		on conflict (name) do nothing
+		returning id::text, name, owner_handle, created_at`
 	var w models.Workspace
-	err := s.db.QueryRow(ctx, query, name).Scan(&w.ID, &w.Name, &w.CreatedAt)
+	err := s.db.QueryRow(ctx, query, name, code, ownerHandle).Scan(&w.ID, &w.Name, &w.OwnerHandle, &w.CreatedAt)
+	if err == nil {
+		return w, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return models.Workspace{}, err
+	}
+
+	verifyQuery := `
+		select id::text, name, owner_handle, created_at
+		from workspaces
+		where name = $1 and join_code = $2`
+	err = s.db.QueryRow(ctx, verifyQuery, name, code).Scan(&w.ID, &w.Name, &w.OwnerHandle, &w.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return models.Workspace{}, fmt.Errorf("invalid workspace name or code")
+	}
 	return w, err
 }
 

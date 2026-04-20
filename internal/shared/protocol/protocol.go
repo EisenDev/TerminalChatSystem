@@ -92,6 +92,7 @@ type IdentifyPayload struct {
 
 type JoinWorkspacePayload struct {
 	Workspace string `json:"workspace"`
+	Code      string `json:"code"`
 }
 
 type JoinChannelPayload struct {

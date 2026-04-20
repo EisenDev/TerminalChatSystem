@@ -18,13 +18,13 @@ jobs:
           go-version: "1.23"
 
       - name: Test
-        run: go test ./...
+        run: go test -buildvcs=false ./...
 
       - name: Build client
-        run: go build ./cmd/client
+        run: go build -buildvcs=false ./cmd/client
 
       - name: Build server
-        run: go build ./cmd/server
+        run: go build -buildvcs=false ./cmd/server
 
   docker-image:
     runs-on: ubuntu-latest

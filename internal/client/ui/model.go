@@ -102,8 +102,12 @@ func NewModel(cfg config.Client, logger *slog.Logger) Model {
 	server.SetValue(cfg.ServerURL)
 
 	workspace := textinput.New()
-	workspace.Placeholder = "workspace"
+	workspace.Placeholder = "workspace / group name"
 	workspace.SetValue(cfg.Workspace)
+
+	workspaceCode := textinput.New()
+	workspaceCode.Placeholder = "workspace code"
+	workspaceCode.SetValue(cfg.WorkspaceCode)
 
 	input := textarea.New()
 	input.Placeholder = "type a message or /help"
@@ -126,7 +130,7 @@ func NewModel(cfg config.Client, logger *slog.Logger) Model {
 		ctx:      ctx,
 		cancel:   cancel,
 		setupInputs: []textinput.Model{
-			handle, server, workspace,
+			handle, server, workspace, workspaceCode,
 		},
 		input:             input,
 		viewport:          vp,
@@ -229,6 +233,7 @@ func (m Model) updateSetup(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.app.Handle = strings.TrimSpace(m.setupInputs[0].Value())
 		m.app.ServerURL = strings.TrimSpace(m.setupInputs[1].Value())
 		m.app.Workspace = strings.TrimSpace(m.setupInputs[2].Value())
+		m.cfg.WorkspaceCode = strings.TrimSpace(m.setupInputs[3].Value())
 		m.app.Current = m.cfg.DefaultChannel
 		m.cfg.ServerURL = m.app.ServerURL
 		m.reconnect()
@@ -257,6 +262,7 @@ func (m *Model) reconnect() {
 	m.ws.Configure(clientws.Session{
 		Handle:    m.app.Handle,
 		Workspace: m.app.Workspace,
+		Code:      m.cfg.WorkspaceCode,
 		Channel:   m.app.Current,
 	})
 	m.ws.Start(m.ctx)
@@ -664,6 +670,7 @@ func (m Model) viewSetup() string {
 	style := lipgloss.NewStyle().Padding(1, 2)
 	var fields []string
 	labels := []string{"Handle", "Server URL", "Workspace"}
+	labels = append(labels, "Workspace Code")
 	for i, input := range m.setupInputs {
 		row := fmt.Sprintf("%s\n%s", labels[i], input.View())
 		if i == m.setupStep {

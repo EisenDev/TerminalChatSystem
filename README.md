@@ -99,6 +99,7 @@ export CHAT_DATABASE_URL='postgres://teamchat:teamchat@localhost:5432/teamchat?s
 export CHAT_REDIS_ADDR='localhost:6379'
 export CHAT_SERVER_URL='http://localhost:8080'
 export CHAT_WORKSPACE='acme'
+export CHAT_WORKSPACE_CODE='acme123'
 ```
 
 Windows PowerShell:
@@ -108,6 +109,7 @@ $env:CHAT_DATABASE_URL = "postgres://teamchat:teamchat@localhost:5432/teamchat?s
 $env:CHAT_REDIS_ADDR = "localhost:6379"
 $env:CHAT_SERVER_URL = "http://localhost:8080"
 $env:CHAT_WORKSPACE = "acme"
+$env:CHAT_WORKSPACE_CODE = "acme123"
 ```
 
 ### Run migrations and seed
@@ -158,8 +160,9 @@ Enter:
 - handle, such as `alice`
 - server URL, such as `http://localhost:8080`
 - workspace, such as `acme`
+- workspace code, such as `acme123`
 
-The client joins the default `lobby` channel and starts receiving real-time updates.
+The first user to join a brand-new workspace name creates it and sets its code. Later users must use the same workspace name plus the correct code. The client joins the default `lobby` channel and starts receiving real-time updates.
 
 ### Local multi-client testing
 
@@ -168,13 +171,13 @@ Run the server once, then open multiple terminal windows and start one client pe
 Client 1:
 
 ```bash
-CHAT_HANDLE=alice CHAT_SERVER_URL=http://localhost:8080 CHAT_WORKSPACE=acme make client
+CHAT_HANDLE=alice CHAT_SERVER_URL=http://localhost:8080 CHAT_WORKSPACE=acme CHAT_WORKSPACE_CODE=acme123 make client
 ```
 
 Client 2:
 
 ```bash
-CHAT_HANDLE=bob CHAT_SERVER_URL=http://localhost:8080 CHAT_WORKSPACE=acme make client
+CHAT_HANDLE=bob CHAT_SERVER_URL=http://localhost:8080 CHAT_WORKSPACE=acme CHAT_WORKSPACE_CODE=acme123 make client
 ```
 
 For LAN testing, replace `localhost` with the server machine IP, such as `http://192.168.1.25:8080`.

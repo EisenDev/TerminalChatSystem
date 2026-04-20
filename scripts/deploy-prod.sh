@@ -32,6 +32,7 @@ done
 
 docker compose -f docker-compose.prod.yml exec -T postgres psql -U teamchat -d teamchat < migrations/000001_init.up.sql
 docker compose -f docker-compose.prod.yml exec -T postgres psql -U teamchat -d teamchat < migrations/000002_emotes.up.sql
+docker compose -f docker-compose.prod.yml exec -T postgres psql -U teamchat -d teamchat < migrations/000003_workspace_codes.up.sql
 docker compose -f docker-compose.prod.yml exec -T postgres psql -U teamchat -d teamchat < scripts/seed.sql
 
 docker compose -f docker-compose.prod.yml up -d app

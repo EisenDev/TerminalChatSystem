@@ -35,9 +35,10 @@ type User struct {
 }
 
 type Workspace struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	CreatedAt time.Time `json:"created_at"`
+	ID          string    `json:"id"`
+	Name        string    `json:"name"`
+	OwnerHandle string    `json:"owner_handle,omitempty"`
+	CreatedAt   time.Time `json:"created_at"`
 }
 
 type Channel struct {

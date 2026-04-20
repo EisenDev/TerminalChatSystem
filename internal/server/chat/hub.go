@@ -173,7 +173,11 @@ func (h *Hub) handleEvent(ctx context.Context, sess *Session, event protocol.Env
 		if name == "" {
 			return errors.New("workspace is required")
 		}
-		workspace, err := h.store.EnsureWorkspace(ctx, name)
+		code := strings.TrimSpace(payload.Code)
+		if code == "" {
+			return errors.New("workspace code is required")
+		}
+		workspace, err := h.store.EnsureWorkspace(ctx, name, code, sess.user.Handle)
 		if err != nil {
 			return fmt.Errorf("ensure workspace: %w", err)
 		}

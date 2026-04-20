@@ -30,6 +30,7 @@ type Event struct {
 type Session struct {
 	Handle    string
 	Workspace string
+	Code      string
 	Channel   string
 }
 
@@ -151,7 +152,7 @@ func (m *Manager) resync() {
 		return
 	}
 	_ = m.Send(protocol.ClientIdentify, protocol.IdentifyPayload{Handle: session.Handle})
-	_ = m.Send(protocol.ClientJoinWorkspace, protocol.JoinWorkspacePayload{Workspace: session.Workspace})
+	_ = m.Send(protocol.ClientJoinWorkspace, protocol.JoinWorkspacePayload{Workspace: session.Workspace, Code: session.Code})
 	if session.Channel != "" {
 		_ = m.Send(protocol.ClientJoinChannel, protocol.JoinChannelPayload{Channel: session.Channel})
 	}

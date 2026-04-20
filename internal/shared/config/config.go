@@ -26,6 +26,7 @@ type Server struct {
 type Client struct {
 	ServerURL      string
 	Workspace      string
+	WorkspaceCode  string
 	DefaultHandle  string
 	DefaultChannel string
 	LogFormat      string
@@ -58,6 +59,7 @@ func LoadClient() Client {
 	return Client{
 		ServerURL:      getEnv("CHAT_SERVER_URL", "http://localhost:8080"),
 		Workspace:      getEnv("CHAT_WORKSPACE", "acme"),
+		WorkspaceCode:  getEnv("CHAT_WORKSPACE_CODE", ""),
 		DefaultHandle:  getEnv("CHAT_HANDLE", ""),
 		DefaultChannel: getEnv("CHAT_DEFAULT_CHANNEL", "lobby"),
 		LogFormat:      getEnv("CHAT_LOG_FORMAT", "text"),

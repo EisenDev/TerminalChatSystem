@@ -23,8 +23,8 @@ func (f *fakeStore) EnsureUser(_ context.Context, handle string) (models.User, e
 	f.user = models.User{ID: "u1", Handle: handle}
 	return f.user, nil
 }
-func (f *fakeStore) EnsureWorkspace(_ context.Context, name string) (models.Workspace, error) {
-	f.workspace = models.Workspace{ID: "w1", Name: name}
+func (f *fakeStore) EnsureWorkspace(_ context.Context, name, _ string, ownerHandle string) (models.Workspace, error) {
+	f.workspace = models.Workspace{ID: "w1", Name: name, OwnerHandle: ownerHandle}
 	return f.workspace, nil
 }
 func (f *fakeStore) EnsureChannel(_ context.Context, workspaceID, name string, kind models.ChannelKind) (models.Channel, error) {
@@ -72,7 +72,7 @@ func TestHubMessageFlow(t *testing.T) {
 	sess := NewSession("s1")
 	hub.Register(sess)
 	hub.HandleInbound(sess, protocol.MustEnvelope(protocol.ClientIdentify, protocol.IdentifyPayload{Handle: "alice"}))
-	hub.HandleInbound(sess, protocol.MustEnvelope(protocol.ClientJoinWorkspace, protocol.JoinWorkspacePayload{Workspace: "acme"}))
+	hub.HandleInbound(sess, protocol.MustEnvelope(protocol.ClientJoinWorkspace, protocol.JoinWorkspacePayload{Workspace: "acme", Code: "acme123"}))
 	hub.HandleInbound(sess, protocol.MustEnvelope(protocol.ClientSendMessage, protocol.SendMessagePayload{Body: "hello"}))
 
 	time.Sleep(50 * time.Millisecond)

@@ -22,10 +22,25 @@ jobs:
           username: ${{ secrets.AZURE_USER }}
           key: ${{ secrets.AZURE_SSH_KEY }}
           envs: GHCR_USERNAME,GHCR_TOKEN
+          command_timeout: 30m
           script: |
-            sudo apt-get update
-            sudo apt-get install -y git
-            rm -rf /tmp/teamchat-deploy
-            git clone --depth 1 --branch main https://github.com/EisenDev/TerminalChatSystem.git /tmp/teamchat-deploy
-            chmod +x /tmp/teamchat-deploy/scripts/deploy-prod.sh
-            APP_DIR=/opt/teamchat REPO_URL=https://github.com/EisenDev/TerminalChatSystem.git BRANCH=main /tmp/teamchat-deploy/scripts/deploy-prod.sh
+            if ! command -v git >/dev/null 2>&1; then
+              echo "git is required on the server for deploys"
+              exit 1
+            fi
+            if ! command -v docker >/dev/null 2>&1; then
+              echo "docker is required on the server for deploys"
+              exit 1
+            fi
+            APP_DIR=/opt/teamchat REPO_URL=https://github.com/EisenDev/TerminalChatSystem.git BRANCH=main GHCR_USERNAME="$GHCR_USERNAME" GHCR_TOKEN="$GHCR_TOKEN" bash -lc '
+              set -eu
+              if [ ! -d "$APP_DIR/.git" ]; then
+                sudo mkdir -p /opt
+                sudo rm -rf "$APP_DIR"
+                sudo git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$APP_DIR"
+                sudo chown -R "$USER:$USER" "$APP_DIR"
+              fi
+              cd "$APP_DIR"
+              chmod +x scripts/deploy-prod.sh
+              ./scripts/deploy-prod.sh
+            '
