@@ -21,4 +21,4 @@ sh "$TMP_DIR/install.sh"
 
 echo
 echo "Run:"
-echo "  CHAT_SERVER_URL=$BASE_URL CHAT_WORKSPACE=acme CHAT_WORKSPACE_CODE=acme123 teamchat"
+echo "  termichat"

@@ -1,9 +1,12 @@
 package config
 
 import (
+	"bufio"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -56,14 +59,15 @@ func LoadServer() (Server, error) {
 }
 
 func LoadClient() Client {
+	fileEnv := loadClientFileEnv()
 	return Client{
-		ServerURL:      getEnv("CHAT_SERVER_URL", "http://localhost:8080"),
-		Workspace:      getEnv("CHAT_WORKSPACE", "acme"),
-		WorkspaceCode:  getEnv("CHAT_WORKSPACE_CODE", ""),
-		DefaultHandle:  getEnv("CHAT_HANDLE", ""),
-		DefaultChannel: getEnv("CHAT_DEFAULT_CHANNEL", "lobby"),
-		LogFormat:      getEnv("CHAT_LOG_FORMAT", "text"),
-		ReconnectDelay: getEnvDuration("CHAT_RECONNECT_DELAY", 3*time.Second),
+		ServerURL:      getClientEnv(fileEnv, "CHAT_SERVER_URL", "http://localhost:8080"),
+		Workspace:      getClientEnv(fileEnv, "CHAT_WORKSPACE", "acme"),
+		WorkspaceCode:  getClientEnv(fileEnv, "CHAT_WORKSPACE_CODE", ""),
+		DefaultHandle:  getClientEnv(fileEnv, "CHAT_HANDLE", ""),
+		DefaultChannel: getClientEnv(fileEnv, "CHAT_DEFAULT_CHANNEL", "lobby"),
+		LogFormat:      getClientEnv(fileEnv, "CHAT_LOG_FORMAT", "text"),
+		ReconnectDelay: getClientEnvDuration(fileEnv, "CHAT_RECONNECT_DELAY", 3*time.Second),
 	}
 }
 
@@ -92,4 +96,56 @@ func getEnvDuration(key string, fallback time.Duration) time.Duration {
 		}
 	}
 	return fallback
+}
+
+func getClientEnv(fileEnv map[string]string, key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	if v := fileEnv[key]; v != "" {
+		return v
+	}
+	return fallback
+}
+
+func getClientEnvDuration(fileEnv map[string]string, key string, fallback time.Duration) time.Duration {
+	if v := os.Getenv(key); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			return d
+		}
+	}
+	if v := fileEnv[key]; v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			return d
+		}
+	}
+	return fallback
+}
+
+func loadClientFileEnv() map[string]string {
+	cfgDir, err := os.UserConfigDir()
+	if err != nil {
+		return map[string]string{}
+	}
+	path := filepath.Join(cfgDir, "teamchat", "client.env")
+	file, err := os.Open(path)
+	if err != nil {
+		return map[string]string{}
+	}
+	defer file.Close()
+
+	env := make(map[string]string)
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		key, value, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		env[strings.TrimSpace(key)] = strings.TrimSpace(value)
+	}
+	return env
 }

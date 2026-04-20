@@ -32,6 +32,7 @@ const (
 )
 
 type frameTickMsg time.Time
+type autoConnectMsg struct{}
 
 type pingEffectState struct {
 	From      string
@@ -167,7 +168,11 @@ func defaultKeys() keyMap {
 }
 
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(textinput.Blink, tickFrame())
+	cmds := []tea.Cmd{textinput.Blink, tickFrame()}
+	if m.shouldAutoConnect() {
+		cmds = append(cmds, func() tea.Msg { return autoConnectMsg{} })
+	}
+	return tea.Batch(cmds...)
 }
 
 func tickFrame() tea.Cmd {
@@ -192,6 +197,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.refreshViewport()
 		return m, tickFrame()
+
+	case autoConnectMsg:
+		if m.phase == phaseSetup && m.shouldAutoConnect() {
+			m.connectFromSetup()
+			return m, waitForWSEvent(m.ws.Events())
+		}
+		return m, nil
 
 	case tea.KeyMsg:
 		if key.Matches(msg, m.keys.Quit) {
@@ -246,15 +258,7 @@ func (m Model) updateSetup(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.prefillRememberedHandle()
 			return m, textinput.Blink
 		}
-		m.app.ServerURL = strings.TrimSpace(m.setupInputs[0].Value())
-		m.app.Workspace = strings.TrimSpace(m.setupInputs[1].Value())
-		m.cfg.WorkspaceCode = strings.TrimSpace(m.setupInputs[2].Value())
-		m.app.Handle = strings.TrimSpace(m.setupInputs[3].Value())
-		m.app.Current = m.cfg.DefaultChannel
-		m.cfg.ServerURL = m.app.ServerURL
-		m.reconnect()
-		m.phase = phaseChat
-		m.app.StatusText = "connecting"
+		m.connectFromSetup()
 		return m, waitForWSEvent(m.ws.Events())
 	case tea.KeyTab, tea.KeyShiftTab, tea.KeyUp, tea.KeyDown:
 		delta := 1
@@ -284,6 +288,18 @@ func (m *Model) reconnect() {
 		DeviceToken: m.deviceToken,
 	})
 	m.ws.Start(m.ctx)
+}
+
+func (m *Model) connectFromSetup() {
+	m.app.ServerURL = strings.TrimSpace(m.setupInputs[0].Value())
+	m.app.Workspace = strings.TrimSpace(m.setupInputs[1].Value())
+	m.cfg.WorkspaceCode = strings.TrimSpace(m.setupInputs[2].Value())
+	m.app.Handle = strings.TrimSpace(m.setupInputs[3].Value())
+	m.app.Current = m.cfg.DefaultChannel
+	m.cfg.ServerURL = m.app.ServerURL
+	m.reconnect()
+	m.phase = phaseChat
+	m.app.StatusText = "connecting"
 }
 
 func (m Model) updateChatKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -868,6 +884,19 @@ func (m Model) lookupRememberedHandle() (profile.WorkspaceProfile, bool) {
 		return profile.WorkspaceProfile{}, false
 	}
 	return m.profiles.Lookup(serverURL, workspace, code)
+}
+
+func (m Model) shouldAutoConnect() bool {
+	if strings.TrimSpace(m.setupInputs[0].Value()) == "" {
+		return false
+	}
+	if strings.TrimSpace(m.setupInputs[1].Value()) == "" {
+		return false
+	}
+	if strings.TrimSpace(m.setupInputs[2].Value()) == "" {
+		return false
+	}
+	return strings.TrimSpace(m.setupInputs[3].Value()) != ""
 }
 
 func waitForWSEvent(ch <-chan clientws.Event) tea.Cmd {

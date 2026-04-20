@@ -215,13 +215,14 @@ Your friend can unpack it and run:
 
 ```bash
 sh install.sh
-CHAT_SERVER_URL=http://termichat.zeraynce.com CHAT_WORKSPACE=acme CHAT_WORKSPACE_CODE=acme123 teamchat
+termichat
 ```
 
 Or install directly from the hosted script:
 
 ```bash
 curl -fsSL http://termichat.zeraynce.com/install.sh | sh
+termichat
 ```
 
 ## Keyboard / Commands
