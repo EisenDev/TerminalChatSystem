@@ -3,6 +3,7 @@ set -eu
 
 INSTALL_DIR=${INSTALL_DIR:-"$HOME/.local/bin"}
 CONFIG_DIR=${XDG_CONFIG_HOME:-"$HOME/.config"}/teamchat
+SHELL_NAME=$(basename "${SHELL:-sh}")
 mkdir -p "$INSTALL_DIR"
 cp "$(dirname "$0")/teamchat" "$INSTALL_DIR/teamchat"
 chmod +x "$INSTALL_DIR/teamchat"
@@ -13,8 +14,29 @@ CHAT_WORKSPACE=acme
 CHAT_WORKSPACE_CODE=acme123
 CHAT_DEFAULT_CHANNEL=lobby
 EOF
+ensure_path_line() {
+  target_file=$1
+  if [ -f "$target_file" ] && grep -Fq 'export PATH="$HOME/.local/bin:$PATH"' "$target_file"; then
+    return
+  fi
+  mkdir -p "$(dirname "$target_file")"
+  printf '\nexport PATH="$HOME/.local/bin:$PATH"\n' >> "$target_file"
+}
+
+case "$SHELL_NAME" in
+  zsh)
+    ensure_path_line "$HOME/.zshrc"
+    ;;
+  bash)
+    ensure_path_line "$HOME/.bashrc"
+    ;;
+  *)
+    ensure_path_line "$HOME/.profile"
+    ;;
+esac
 printf 'installed to %s/teamchat\n' "$INSTALL_DIR"
 printf 'saved config to %s/client.env\n' "$CONFIG_DIR"
 printf 'start with:\n'
 printf '  termichat\n'
-printf 'add %s to PATH if needed\n' "$INSTALL_DIR"
+printf 'if this terminal does not find termichat yet, run:\n'
+printf '  export PATH="$HOME/.local/bin:$PATH"\n'
