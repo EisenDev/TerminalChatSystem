@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/eisen/teamchat/internal/server/chat"
@@ -26,6 +28,20 @@ func NewServer(logger *slog.Logger, hub *chat.Hub, cfg config.Server) *Server {
 			"time":   time.Now().UTC(),
 		})
 	})
+	publicDir := filepath.Join(".", "public")
+	if _, err := os.Stat(publicDir); err == nil {
+		mux.Handle("/downloads/", http.StripPrefix("/downloads/", http.FileServer(http.Dir(filepath.Join(publicDir, "downloads")))))
+		mux.HandleFunc("/install.sh", func(w http.ResponseWriter, r *http.Request) {
+			http.ServeFile(w, r, filepath.Join(publicDir, "install.sh"))
+		})
+		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/" {
+				http.NotFound(w, r)
+				return
+			}
+			http.ServeFile(w, r, filepath.Join(publicDir, "index.html"))
+		})
+	}
 
 	return &Server{
 		httpServer: &http.Server{

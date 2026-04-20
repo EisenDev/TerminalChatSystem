@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TermiChat</title>
+  <style>
+    :root {
+      --bg: #0b0f14;
+      --panel: #111824;
+      --panel-2: #171f2d;
+      --text: #e8eef7;
+      --muted: #92a0b5;
+      --accent: #7df9ff;
+      --accent-2: #ffcf5a;
+      --line: rgba(255,255,255,0.12);
+      --good: #7cf29a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "JetBrains Mono", "Fira Code", monospace;
+      background:
+        radial-gradient(circle at top left, rgba(125,249,255,0.14), transparent 32%),
+        radial-gradient(circle at top right, rgba(255,207,90,0.12), transparent 28%),
+        linear-gradient(180deg, #0a0f14, #0f1520 55%, #0a1119);
+      color: var(--text);
+      min-height: 100vh;
+    }
+    .wrap { max-width: 1080px; margin: 0 auto; padding: 40px 20px 80px; }
+    .hero {
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(17,24,36,0.9), rgba(11,15,20,0.92));
+      border-radius: 24px;
+      padding: 28px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.35);
+    }
+    .label { color: var(--accent); font-size: 13px; text-transform: uppercase; letter-spacing: 0.18em; }
+    pre.logo {
+      margin: 18px 0 10px;
+      color: #f7fbff;
+      font-size: clamp(12px, 1.3vw, 18px);
+      line-height: 0.95;
+      overflow: auto;
+    }
+    .sub { color: var(--muted); max-width: 720px; line-height: 1.6; }
+    .actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 24px; }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 14px 18px;
+      border-radius: 14px;
+      text-decoration: none;
+      border: 1px solid var(--line);
+      color: var(--text);
+      background: var(--panel-2);
+      min-width: 200px;
+    }
+    .btn.primary {
+      background: linear-gradient(135deg, var(--accent), #4dbbff);
+      color: #041018;
+      border-color: transparent;
+      font-weight: 700;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 18px;
+      margin-top: 24px;
+    }
+    .card {
+      border: 1px solid var(--line);
+      background: rgba(17,24,36,0.86);
+      border-radius: 18px;
+      padding: 20px;
+    }
+    h2, h3 { margin-top: 0; }
+    code, pre.code {
+      background: rgba(0,0,0,0.28);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 14px;
+      display: block;
+      padding: 14px;
+      overflow: auto;
+      color: #dff8ff;
+    }
+    ul { padding-left: 18px; color: var(--muted); }
+    li { margin-bottom: 10px; }
+    .pill {
+      display: inline-block;
+      padding: 5px 10px;
+      border-radius: 999px;
+      background: rgba(124,242,154,0.12);
+      color: var(--good);
+      border: 1px solid rgba(124,242,154,0.28);
+      font-size: 12px;
+      margin-bottom: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="hero">
+      <div class="label">Terminal Ops</div>
+      <pre class="logo">████████╗███████╗██████╗ ███╗   ███╗██╗ ██████╗██╗  ██╗ █████╗ ████████╗
+╚══██╔══╝██╔════╝██╔══██╗████╗ ████║██║██╔════╝██║  ██║██╔══██╗╚══██╔══╝
+   ██║   █████╗  ██████╔╝██╔████╔██║██║██║     ███████║███████║   ██║
+   ██║   ██╔══╝  ██╔══██╗██║╚██╔╝██║██║██║     ██╔══██║██╔══██║   ██║
+   ██║   ███████╗██║  ██║██║ ╚═╝ ██║██║╚██████╗██║  ██║██║  ██║   ██║
+   ╚═╝   ╚══════╝╚═╝  ╚═╝╚═╝     ╚═╝╚═╝ ╚═════╝╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝</pre>
+      <p class="sub">
+        TermiChat is a multiplayer terminal chat client. Download the Linux package, install it to your shell, then connect to the live workspace server with a single command.
+      </p>
+      <div class="actions">
+        <a class="btn primary" href="/downloads/teamchat-client-linux-amd64.tar.gz">Download Linux Package</a>
+        <a class="btn" href="/install.sh">Download install.sh</a>
+      </div>
+    </section>
+
+    <div class="grid">
+      <section class="card">
+        <div class="pill">Fast path</div>
+        <h2>Install</h2>
+        <pre class="code">curl -fsSL http://termichat.zeraynce.com:8080/install.sh | sh</pre>
+        <h3>Or manual</h3>
+        <pre class="code">tar -xzf teamchat-client-linux-amd64.tar.gz
+sh install.sh</pre>
+      </section>
+
+      <section class="card">
+        <div class="pill">Run</div>
+        <h2>Open the chat</h2>
+        <pre class="code">CHAT_SERVER_URL=http://termichat.zeraynce.com:8080 \
+CHAT_WORKSPACE=acme \
+CHAT_WORKSPACE_CODE=acme123 \
+teamchat</pre>
+        <ul>
+          <li>First join on a device asks for your handle.</li>
+          <li>Next join on the same device remembers that handle for the same workspace and code.</li>
+          <li>New joins only see the latest 7 days of logs.</li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <div class="pill">Troubleshooting</div>
+        <h2>If <code>teamchat</code> is not found</h2>
+        <pre class="code">export PATH="$HOME/.local/bin:$PATH"</pre>
+        <p class="sub">Then run the launch command again in the same terminal.</p>
+      </section>
+    </div>
+  </div>
+</body>
+</html>

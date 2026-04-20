@@ -24,8 +24,7 @@ services:
       CHAT_REDIS_ADDR: redis:6379
       CHAT_HTTP_ADDR: :18080
     ports:
-      - "18080:18080"
+      - "8080:18080"
 
 volumes:
   postgres_data:
-

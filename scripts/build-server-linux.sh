@@ -11,4 +11,4 @@ exec docker run --rm \
   -e GOARCH=amd64 \
   -e CGO_ENABLED=0 \
   golang:1.23 \
-  go build -o dist/teamchat-server ./cmd/server
+  go build -buildvcs=false -o dist/teamchat-server ./cmd/server
