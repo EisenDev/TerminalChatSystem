@@ -16,6 +16,7 @@ import (
 	"github.com/eisen/teamchat/internal/server/call"
 	"github.com/eisen/teamchat/internal/server/presence"
 	"github.com/eisen/teamchat/internal/server/store"
+	"github.com/eisen/teamchat/internal/shared/buildinfo"
 	"github.com/eisen/teamchat/internal/shared/models"
 	"github.com/eisen/teamchat/internal/shared/protocol"
 )
@@ -229,6 +230,9 @@ func (h *Hub) handleEvent(ctx context.Context, sess *Session, event protocol.Env
 		sess.Deliver(protocol.MustEnvelope(protocol.ServerUsersList, protocol.UsersListPayload{Users: users}))
 		sess.Deliver(protocol.MustEnvelope(protocol.ServerChannelsList, protocol.ChannelsListPayload{Channels: channels}))
 		sess.Deliver(protocol.MustEnvelope(protocol.ServerChannelJoined, protocol.ChannelJoinedPayload{Channel: channel}))
+		sess.Deliver(protocol.MustEnvelope(protocol.ServerSystemNotice, protocol.SystemNoticePayload{
+			Message: fmt.Sprintf("update %s available in this hub. run /update and restart if needed", buildinfo.Version),
+		}))
 		h.sendHistory(ctx, sess, channel.ID, channel.Name)
 		h.broadcastPresence(sess.workspace.ID, presences)
 		h.broadcastSystem(sess.workspace.ID, protocol.ServerUserJoined, protocol.UserEventPayload{Handle: sess.user.Handle, Channel: channel.Name})

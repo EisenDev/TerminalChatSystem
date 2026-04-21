@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"hash/fnv"
 	"log/slog"
+	"os/exec"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -21,6 +23,7 @@ import (
 	"github.com/eisen/teamchat/internal/client/profile"
 	"github.com/eisen/teamchat/internal/client/state"
 	clientws "github.com/eisen/teamchat/internal/client/ws"
+	"github.com/eisen/teamchat/internal/shared/buildinfo"
 	"github.com/eisen/teamchat/internal/shared/config"
 	"github.com/eisen/teamchat/internal/shared/models"
 	"github.com/eisen/teamchat/internal/shared/protocol"
@@ -35,6 +38,7 @@ const (
 
 type frameTickMsg time.Time
 type autoConnectMsg struct{}
+type updateResultMsg struct{ Message string }
 
 type pingEffectState struct {
 	From      string
@@ -172,7 +176,7 @@ func NewModel(cfg config.Client, logger *slog.Logger) Model {
 
 func defaultKeys() keyMap {
 	return keyMap{
-		Help:      key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
+		Help:      key.NewBinding(key.WithKeys("f1"), key.WithHelp("f1", "help")),
 		Reconnect: key.NewBinding(key.WithKeys("ctrl+r"), key.WithHelp("ctrl+r", "reconnect")),
 		Prev:      key.NewBinding(key.WithKeys("shift+tab", "left"), key.WithHelp("left", "prev pane")),
 		Next:      key.NewBinding(key.WithKeys("tab", "right"), key.WithHelp("right", "next pane")),
@@ -216,6 +220,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.connectFromSetup()
 			return m, waitForWSEvent(m.ws.Events())
 		}
+		return m, nil
+	case updateResultMsg:
+		m.app.Notification = msg.Message
 		return m, nil
 
 	case tea.KeyMsg:
@@ -692,6 +699,9 @@ func (m *Model) handleSlashCommand(text string) tea.Cmd {
 		delete(m.clearedMessages, m.app.Current)
 		m.refreshViewport()
 		m.app.Notification = "restored local messages for #" + m.app.Current
+	case "/update":
+		m.app.Notification = "updating termichat..."
+		return runSelfUpdate()
 	case "/call":
 		if len(fields) < 2 {
 			m.app.Notification = "usage: /call <user>"
@@ -1183,6 +1193,7 @@ func (m Model) commandGuideLines() []string {
 		"/me <action>",
 		"/clear",
 		"/restore --message",
+		"/update",
 		"/quit",
 	}
 }
@@ -1609,6 +1620,27 @@ func dmChannelName(a, b string) string {
 		a, b = b, a
 	}
 	return "dm-" + a + "-" + b
+}
+
+func runSelfUpdate() tea.Cmd {
+	return func() tea.Msg {
+		var cmd *exec.Cmd
+		switch runtime.GOOS {
+		case "windows":
+			cmd = exec.Command("powershell", "-ExecutionPolicy", "Bypass", "-Command", "irm https://termichat.zeraynce.com/install.ps1 | iex")
+		default:
+			cmd = exec.Command("sh", "-c", "curl -fsSL https://termichat.zeraynce.com/update.sh | sh")
+		}
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			msg := "update failed"
+			if len(out) > 0 {
+				msg = strings.TrimSpace(string(out))
+			}
+			return updateResultMsg{Message: msg}
+		}
+		return updateResultMsg{Message: fmt.Sprintf("updated to %s, restart termichat", buildinfo.Version)}
+	}
 }
 
 func formatUsersSummary(users []state.UserEntry) string {
