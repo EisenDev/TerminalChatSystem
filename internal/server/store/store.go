@@ -235,6 +235,21 @@ func ScanChannelByName(row pgx.Row) (models.Channel, error) {
 	return c, nil
 }
 
+func findOrCreateUserByHandle(ctx context.Context, tx pgx.Tx, handle string) (models.User, error) {
+	var user models.User
+	err := tx.QueryRow(ctx, `
+		insert into users (handle, display_name)
+		values ($1, $1)
+		on conflict (handle) do update
+		set display_name = excluded.display_name
+		returning id::text, handle, display_name, created_at`, handle).
+		Scan(&user.ID, &user.Handle, &user.DisplayName, &user.CreatedAt)
+	if err != nil {
+		return models.User{}, err
+	}
+	return user, nil
+}
+
 func (s *Postgres) joinWorkspaceTx(ctx context.Context, tx pgx.Tx, name, code, handle, fingerprint string) (JoinWorkspaceResult, error) {
 	var (
 		result    JoinWorkspaceResult
@@ -252,10 +267,7 @@ func (s *Postgres) joinWorkspaceTx(ctx context.Context, tx pgx.Tx, name, code, h
 		if handle == "" {
 			return JoinWorkspaceResult{}, fmt.Errorf("handle is required the first time this device joins a workspace")
 		}
-		if err := tx.QueryRow(ctx, `
-			insert into users (handle, display_name)
-			values ($1, $1)
-			returning id::text, handle, display_name, created_at`, handle).Scan(&user.ID, &user.Handle, &user.DisplayName, &user.CreatedAt); err != nil {
+		if user, err = findOrCreateUserByHandle(ctx, tx, handle); err != nil {
 			return JoinWorkspaceResult{}, fmt.Errorf("create owner handle: %w", err)
 		}
 		err = tx.QueryRow(ctx, `
@@ -312,10 +324,7 @@ func (s *Postgres) joinWorkspaceTx(ctx context.Context, tx pgx.Tx, name, code, h
 		if handle == "" {
 			return JoinWorkspaceResult{}, fmt.Errorf("handle is required the first time this device joins %s", name)
 		}
-		if err := tx.QueryRow(ctx, `
-			insert into users (handle, display_name)
-			values ($1, $1)
-			returning id::text, handle, display_name, created_at`, handle).Scan(&user.ID, &user.Handle, &user.DisplayName, &user.CreatedAt); err != nil {
+		if user, err = findOrCreateUserByHandle(ctx, tx, handle); err != nil {
 			return JoinWorkspaceResult{}, fmt.Errorf("create device handle: %w", err)
 		}
 		if _, err := tx.Exec(ctx, `

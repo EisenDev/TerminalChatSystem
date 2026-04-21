@@ -129,6 +129,24 @@
       color: #dff8ff;
       overflow: auto;
     }
+    .copy-wrap {
+      position: relative;
+    }
+    .copy-btn {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(104,220,255,0.14);
+      color: var(--cyan-2);
+      border-radius: 10px;
+      padding: 6px 10px;
+      font: inherit;
+      cursor: pointer;
+    }
+    .copy-btn:hover {
+      background: rgba(104,220,255,0.22);
+    }
     p, li { color: var(--muted); }
     ul {
       margin: 0;
@@ -160,23 +178,23 @@
       <section class="card">
         <div class="pill">Install</div>
         <h3>Linux installation</h3>
-        <pre class="code">curl -fsSL https://termichat.zeraynce.com/install.sh | sh</pre>
+        <div class="copy-wrap"><button class="copy-btn" type="button">Copy</button><pre class="code">curl -fsSL https://termichat.zeraynce.com/install.sh | sh</pre></div>
         <h3 style="margin-top:16px;">Windows users <span style="color:#9eb0bf;font-weight:400;">(run it on terminal)</span></h3>
-        <pre class="code">powershell -ExecutionPolicy Bypass -Command "irm https://termichat.zeraynce.com/install.ps1 | iex"</pre>
+        <div class="copy-wrap"><button class="copy-btn" type="button">Copy</button><pre class="code">powershell -ExecutionPolicy Bypass -Command "irm https://termichat.zeraynce.com/install.ps1 | iex"</pre></div>
       </section>
 
       <section class="card">
         <div class="pill">Update</div>
         <h3>Update TermiChat</h3>
-        <pre class="code">curl -fsSL https://termichat.zeraynce.com/update.sh | sh
-rehash</pre>
+        <div class="copy-wrap"><button class="copy-btn" type="button">Copy</button><pre class="code">curl -fsSL https://termichat.zeraynce.com/update.sh | sh
+rehash</pre></div>
         <p>This updates the existing <code>termichat</code> binary in place, keeps your current config, and refreshes your shell command cache in the current terminal.</p>
       </section>
 
       <section class="card">
         <div class="pill">Run</div>
         <h3>Open the chat</h3>
-        <pre class="code">termichat</pre>
+        <div class="copy-wrap"><button class="copy-btn" type="button">Copy</button><pre class="code">termichat</pre></div>
       </section>
 
       <section class="card">
@@ -192,10 +210,28 @@ rehash</pre>
       <section class="card">
         <div class="pill">Troubleshooting</div>
         <p>If <code>termichat</code> is not found in your current shell, run:</p>
-        <pre class="code">export PATH="$HOME/.local/bin:$PATH"</pre>
+        <div class="copy-wrap"><button class="copy-btn" type="button">Copy</button><pre class="code">export PATH="$HOME/.local/bin:$PATH"</pre></div>
         <p>Then run <code>termichat</code> again in the same terminal.</p>
       </section>
     </section>
   </main>
+  <script>
+    document.querySelectorAll('.copy-wrap').forEach((wrap) => {
+      const button = wrap.querySelector('.copy-btn');
+      const code = wrap.querySelector('.code');
+      if (!button || !code) return;
+      button.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(code.textContent.trim());
+          const original = button.textContent;
+          button.textContent = 'Copied';
+          setTimeout(() => { button.textContent = original; }, 1200);
+        } catch (_) {
+          button.textContent = 'Failed';
+          setTimeout(() => { button.textContent = 'Copy'; }, 1200);
+        }
+      });
+    });
+  </script>
 </body>
 </html>
