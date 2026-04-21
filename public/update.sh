@@ -30,15 +30,15 @@ tar -xzf "$ARCHIVE" -C "$TMP_DIR"
 
 if [ ! -w "$(dirname "$TARGET_BIN")" ]; then
   if command -v sudo >/dev/null 2>&1; then
-    sudo cp "$TMP_DIR/termichat" "$TARGET_BIN"
-    sudo chmod +x "$TARGET_BIN"
+    sudo install -m 0755 "$TMP_DIR/termichat" "$TARGET_BIN.new"
+    sudo mv -f "$TARGET_BIN.new" "$TARGET_BIN"
   else
     echo "Need write access to $(dirname "$TARGET_BIN") to update termichat."
     exit 1
   fi
 else
-  cp "$TMP_DIR/termichat" "$TARGET_BIN"
-  chmod +x "$TARGET_BIN"
+  install -m 0755 "$TMP_DIR/termichat" "$TARGET_BIN.new"
+  mv -f "$TARGET_BIN.new" "$TARGET_BIN"
 fi
 
 echo "Updated termichat at $TARGET_BIN"
