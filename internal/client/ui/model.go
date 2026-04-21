@@ -948,24 +948,32 @@ func (m Model) renderStyledBody(handle, body string) string {
 	rendered := make([]string, 0, len(lines))
 	baseStyle := lipgloss.NewStyle().Foreground(colorForHandle(handle))
 	for _, line := range lines {
+		if strings.HasPrefix(strings.TrimLeft(line, " "), "# ") {
+			rendered = append(rendered, renderHeadingLine(strings.TrimSpace(strings.TrimPrefix(strings.TrimLeft(line, " "), "# ")), baseStyle))
+			continue
+		}
 		rendered = append(rendered, renderStyledLine(line, baseStyle, m.app.Handle))
 	}
 	return strings.Join(rendered, "\n")
 }
 
 func renderStyledLine(line string, baseStyle lipgloss.Style, currentHandle string) string {
-	parts := whitespaceSplitPattern.Split(line, -1)
+	parts := tokenPattern.FindAllString(line, -1)
 	currentStyle := baseStyle
 	var out strings.Builder
 	for _, part := range parts {
 		if part == "" {
 			continue
 		}
-		if whitespaceSplitPattern.MatchString(part) {
+		if whitespacePattern.MatchString(part) {
 			out.WriteString(part)
 			continue
 		}
-		if colorStyle, ok := styleForColorTag(part); ok {
+		if styleTag, ok := styleForFormatTag(part, currentStyle); ok {
+			currentStyle = styleTag
+			continue
+		}
+		if colorStyle, ok := styleForColorTag(part, currentStyle); ok {
 			currentStyle = colorStyle
 			continue
 		}
@@ -984,6 +992,24 @@ func renderStyledLine(line string, baseStyle lipgloss.Style, currentHandle strin
 		out.WriteString(currentStyle.Render(part))
 	}
 	return out.String()
+}
+
+func renderHeadingLine(text string, baseStyle lipgloss.Style) string {
+	rows := []strings.Builder{{}, {}, {}} // 3-row compact terminal heading
+	for _, r := range strings.ToUpper(text) {
+		glyph, ok := headingFont[r]
+		if !ok {
+			glyph = []string{string(r) + " ", string(r) + " ", string(r) + " "}
+		}
+		for i := range rows {
+			rows[i].WriteString(glyph[i])
+		}
+	}
+	return strings.Join([]string{
+		baseStyle.Bold(true).Render(rows[0].String()),
+		baseStyle.Bold(true).Render(rows[1].String()),
+		baseStyle.Bold(true).Render(rows[2].String()),
+	}, "\n")
 }
 
 func (m *Model) applySearchLobby() {
@@ -1452,8 +1478,9 @@ func prefixList(prefix string, values []string) []string {
 }
 
 var (
-	mentionCommandPattern  = regexp.MustCompile(`(?i)/mention\s+([a-z0-9._-]+)`)
-	whitespaceSplitPattern = regexp.MustCompile(`(\s+)`)
+	mentionCommandPattern = regexp.MustCompile(`(?i)/mention\s+([a-z0-9._-]+)`)
+	tokenPattern          = regexp.MustCompile(`\s+|[^\s]+`)
+	whitespacePattern     = regexp.MustCompile(`^\s+$`)
 )
 
 func normalizeOutgoingMessage(text string) string {
@@ -1486,13 +1513,24 @@ func mentionTarget(token string) (string, bool) {
 	return name, true
 }
 
-func styleForColorTag(token string) (lipgloss.Style, bool) {
+func styleForColorTag(token string, currentStyle lipgloss.Style) (lipgloss.Style, bool) {
 	colorName := strings.ToLower(strings.TrimPrefix(strings.TrimSpace(token), "#"))
 	color, ok := inlineColorMap[colorName]
 	if !ok {
 		return lipgloss.Style{}, false
 	}
-	return lipgloss.NewStyle().Foreground(color), true
+	return currentStyle.Foreground(color), true
+}
+
+func styleForFormatTag(token string, currentStyle lipgloss.Style) (lipgloss.Style, bool) {
+	switch strings.ToLower(strings.TrimSpace(token)) {
+	case "#u":
+		return currentStyle.Underline(true), true
+	case "#i":
+		return currentStyle.Italic(true), true
+	default:
+		return lipgloss.Style{}, false
+	}
 }
 
 var inlineColorMap = map[string]lipgloss.Color{
@@ -1508,6 +1546,52 @@ var inlineColorMap = map[string]lipgloss.Color{
 	"white":   lipgloss.Color("255"),
 	"gray":    lipgloss.Color("248"),
 	"grey":    lipgloss.Color("248"),
+}
+
+var headingFont = map[rune][]string{
+	' ': {"   ", "   ", "   "},
+	'!': {"█ ", "█ ", "▀ "},
+	'?': {"██ ", " ▄ ", " ▀ "},
+	'.': {"   ", "   ", "▀  "},
+	',': {"   ", " ▄ ", "▄  "},
+	'-': {"   ", "██ ", "   "},
+	'_': {"   ", "   ", "██ "},
+	'0': {"██ ", "█ █", "██ "},
+	'1': {"█  ", "█  ", "█  "},
+	'2': {"██ ", " ▄█", "██ "},
+	'3': {"██ ", " ▄█", "██ "},
+	'4': {"█ █", "███", "  █"},
+	'5': {"██ ", "█▄ ", "██ "},
+	'6': {"██ ", "█▄ ", "██ "},
+	'7': {"███", " ▄ ", "█  "},
+	'8': {"██ ", "██ ", "██ "},
+	'9': {"██ ", "███", "  █"},
+	'A': {"██ ", "███", "█ █"},
+	'B': {"██ ", "██▌", "██ "},
+	'C': {"███", "█  ", "███"},
+	'D': {"██ ", "█ █", "██ "},
+	'E': {"███", "██ ", "███"},
+	'F': {"███", "██ ", "█  "},
+	'G': {"███", "█ █", "███"},
+	'H': {"█ █", "███", "█ █"},
+	'I': {"███", " █ ", "███"},
+	'J': {" ██", "  █", "██ "},
+	'K': {"█ █", "██ ", "█ █"},
+	'L': {"█  ", "█  ", "███"},
+	'M': {"█▄█", "███", "█ █"},
+	'N': {"███", "███", "█ █"},
+	'O': {"██ ", "█ █", "██ "},
+	'P': {"██ ", "██ ", "█  "},
+	'Q': {"██ ", "█ █", "███"},
+	'R': {"██ ", "██ ", "█ █"},
+	'S': {"███", "█▄ ", "███"},
+	'T': {"███", " █ ", " █ "},
+	'U': {"█ █", "█ █", "███"},
+	'V': {"█ █", "█ █", " █ "},
+	'W': {"█ █", "███", "█▄█"},
+	'X': {"█ █", " █ ", "█ █"},
+	'Y': {"█ █", " █ ", " █ "},
+	'Z': {"███", " ▄ ", "███"},
 }
 
 func appendMessage(messages []models.Message, msg models.Message) []models.Message {
