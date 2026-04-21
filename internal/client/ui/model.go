@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"log/slog"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -91,6 +92,10 @@ type Model struct {
 	lobbyCursor       int
 	highlightUntil    map[string]time.Time
 	messagesByChannel map[string][]models.Message
+	clearedMessages   map[string][]models.Message
+	inputHistory      []string
+	inputHistoryIndex int
+	inputDraft        string
 	effectsEnabled    bool
 	mutedEffectUsers  map[string]bool
 	activeEffect      *pingEffectState
@@ -149,8 +154,10 @@ func NewModel(cfg config.Client, logger *slog.Logger) Model {
 		viewport:          vp,
 		highlightUntil:    make(map[string]time.Time),
 		messagesByChannel: make(map[string][]models.Message),
+		clearedMessages:   make(map[string][]models.Message),
 		effectsEnabled:    true,
 		mutedEffectUsers:  make(map[string]bool),
+		inputHistoryIndex: -1,
 		profiles:          profiles,
 	}
 	if profiles != nil {
@@ -423,16 +430,24 @@ func (m Model) updateChatKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case tea.KeyEnd:
 		m.viewport.GotoBottom()
 		return m, nil
+	case tea.KeyUp:
+		m.recallInput(-1)
+		return m, nil
+	case tea.KeyDown:
+		m.recallInput(1)
+		return m, nil
 	case tea.KeyEnter:
 		text := strings.TrimSpace(m.input.Value())
 		if text == "" {
 			return m, nil
 		}
+		m.pushInputHistory(text)
 		if strings.HasPrefix(text, "/") {
 			cmd := m.handleSlashCommand(text)
 			m.input.Reset()
 			return m, cmd
 		}
+		text = normalizeOutgoingMessage(text)
 		_ = m.ws.Send(protocol.ClientSendMessage, protocol.SendMessagePayload{
 			Channel: m.app.Current,
 			Body:    text,
@@ -453,6 +468,53 @@ func (m Model) updateChatKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	m.input, cmd = m.input.Update(msg)
 	return m, cmd
+}
+
+func (m *Model) pushInputHistory(text string) {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return
+	}
+	if n := len(m.inputHistory); n > 0 && m.inputHistory[n-1] == text {
+		m.inputHistoryIndex = -1
+		m.inputDraft = ""
+		return
+	}
+	m.inputHistory = append(m.inputHistory, text)
+	if len(m.inputHistory) > 100 {
+		m.inputHistory = m.inputHistory[len(m.inputHistory)-100:]
+	}
+	m.inputHistoryIndex = -1
+	m.inputDraft = ""
+}
+
+func (m *Model) recallInput(delta int) {
+	if len(m.inputHistory) == 0 {
+		return
+	}
+	if delta < 0 {
+		if m.inputHistoryIndex == -1 {
+			m.inputDraft = m.input.Value()
+			m.inputHistoryIndex = len(m.inputHistory) - 1
+		} else if m.inputHistoryIndex > 0 {
+			m.inputHistoryIndex--
+		}
+	} else {
+		if m.inputHistoryIndex == -1 {
+			return
+		}
+		if m.inputHistoryIndex < len(m.inputHistory)-1 {
+			m.inputHistoryIndex++
+		} else {
+			m.inputHistoryIndex = -1
+			m.input.SetValue(m.inputDraft)
+			m.input.SetCursor(len([]rune(m.inputDraft)))
+			return
+		}
+	}
+	value := m.inputHistory[m.inputHistoryIndex]
+	m.input.SetValue(value)
+	m.input.SetCursor(len([]rune(value)))
 }
 
 func (m Model) updateEmotePicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -610,9 +672,26 @@ func (m *Model) handleSlashCommand(text string) tea.Cmd {
 		body := "* " + m.app.Handle + " " + strings.Join(fields[1:], " ") + " *"
 		_ = m.ws.Send(protocol.ClientSendMessage, protocol.SendMessagePayload{Channel: m.app.Current, Body: body})
 	case "/clear":
+		if current := m.messagesByChannel[m.app.Current]; len(current) > 0 {
+			m.clearedMessages[m.app.Current] = append([]models.Message(nil), current...)
+		}
 		delete(m.messagesByChannel, m.app.Current)
 		m.refreshViewport()
 		m.app.Notification = "cleared local view for #" + m.app.Current
+	case "/restore":
+		if len(fields) < 2 || fields[1] != "--message" {
+			m.app.Notification = "usage: /restore --message"
+			return nil
+		}
+		saved := m.clearedMessages[m.app.Current]
+		if len(saved) == 0 {
+			m.app.Notification = "no cleared messages to restore"
+			return nil
+		}
+		m.messagesByChannel[m.app.Current] = append([]models.Message(nil), saved...)
+		delete(m.clearedMessages, m.app.Current)
+		m.refreshViewport()
+		m.app.Notification = "restored local messages for #" + m.app.Current
 	case "/call":
 		if len(fields) < 2 {
 			m.app.Notification = "usage: /call <user>"
@@ -730,6 +809,11 @@ func (m Model) handleWSEvent(evt clientws.Event) (tea.Model, tea.Cmd) {
 			channel = m.app.Current
 		}
 		m.messagesByChannel[channel] = appendMessage(m.messagesByChannel[channel], payload)
+		if payload.UserHandle != "" && payload.UserHandle != m.app.Handle && messageMentionsHandle(payload.Body, m.app.Handle) {
+			m.highlightUntil[m.app.Handle] = time.Now().Add(6 * time.Second)
+			m.app.Notification = payload.UserHandle + " mentioned you"
+			notify.Send("Notification from "+payload.UserHandle, "Open TermiChat")
+		}
 	case protocol.ServerPresenceUpdate:
 		payload, _ := protocol.DecodePayload[protocol.PresenceUpdatePayload](*evt.Envelope)
 		for _, p := range payload.Presences {
@@ -848,11 +932,58 @@ func (m *Model) renderMessage(msg models.Message) string {
 	if msg.MessageType == models.MessageTypeEmote {
 		bodyStyle = lipgloss.NewStyle()
 	}
-	block := headerStyle.Render(header) + "\n" + bodyStyle.Render(body)
+	renderedBody := bodyStyle.Render(body)
+	if msg.MessageType != models.MessageTypeEmote {
+		renderedBody = m.renderStyledBody(msg.UserHandle, body)
+	}
+	block := headerStyle.Render(header) + "\n" + renderedBody
 	if msg.UserHandle == m.app.Handle {
 		return lipgloss.NewStyle().Width(contentWidth).Align(lipgloss.Right).Render(block)
 	}
 	return lipgloss.NewStyle().Width(contentWidth).Align(lipgloss.Left).Render(block)
+}
+
+func (m Model) renderStyledBody(handle, body string) string {
+	lines := strings.Split(body, "\n")
+	rendered := make([]string, 0, len(lines))
+	baseStyle := lipgloss.NewStyle().Foreground(colorForHandle(handle))
+	for _, line := range lines {
+		rendered = append(rendered, renderStyledLine(line, baseStyle, m.app.Handle))
+	}
+	return strings.Join(rendered, "\n")
+}
+
+func renderStyledLine(line string, baseStyle lipgloss.Style, currentHandle string) string {
+	parts := whitespaceSplitPattern.Split(line, -1)
+	currentStyle := baseStyle
+	var out strings.Builder
+	for _, part := range parts {
+		if part == "" {
+			continue
+		}
+		if whitespaceSplitPattern.MatchString(part) {
+			out.WriteString(part)
+			continue
+		}
+		if colorStyle, ok := styleForColorTag(part); ok {
+			currentStyle = colorStyle
+			continue
+		}
+		if mention, ok := mentionTarget(part); ok {
+			style := currentStyle.
+				Underline(true).
+				Bold(true).
+				Foreground(lipgloss.Color("229")).
+				Background(lipgloss.Color("62"))
+			if strings.EqualFold(mention, currentHandle) {
+				style = style.Background(lipgloss.Color("160"))
+			}
+			out.WriteString(style.Render(part))
+			continue
+		}
+		out.WriteString(currentStyle.Render(part))
+	}
+	return out.String()
 }
 
 func (m *Model) applySearchLobby() {
@@ -1025,6 +1156,7 @@ func (m Model) commandGuideLines() []string {
 		"/emote",
 		"/me <action>",
 		"/clear",
+		"/restore --message",
 		"/quit",
 	}
 }
@@ -1225,13 +1357,14 @@ func (m Model) flashOverlay() string {
 func (m Model) fkuOverlay() string {
 	width := max(20, m.width)
 	rows := max(10, m.height)
-	progress := m.effectProgress()
 	centerRow := rows / 2
+	elapsed := time.Since(m.activeEffect.StartedAt)
 	stage := 0
-	if progress >= 0.33 && progress < 0.66 {
-		stage = 1
-	} else if progress >= 0.66 {
+	switch {
+	case elapsed >= 1200*time.Millisecond:
 		stage = 2
+	case elapsed >= 500*time.Millisecond:
+		stage = 1
 	}
 
 	closedHands := combineHandFrame(pixelHandLeft, pixelHandRight, 4)
@@ -1316,6 +1449,65 @@ func prefixList(prefix string, values []string) []string {
 		out = append(out, prefix+v)
 	}
 	return out
+}
+
+var (
+	mentionCommandPattern  = regexp.MustCompile(`(?i)/mention\s+([a-z0-9._-]+)`)
+	whitespaceSplitPattern = regexp.MustCompile(`(\s+)`)
+)
+
+func normalizeOutgoingMessage(text string) string {
+	return mentionCommandPattern.ReplaceAllString(text, "@$1")
+}
+
+func messageMentionsHandle(body, handle string) bool {
+	if handle == "" {
+		return false
+	}
+	handle = strings.ToLower(strings.TrimSpace(handle))
+	for _, token := range strings.Fields(body) {
+		if mention, ok := mentionTarget(token); ok && strings.EqualFold(mention, handle) {
+			return true
+		}
+	}
+	return false
+}
+
+func mentionTarget(token string) (string, bool) {
+	trimmed := strings.TrimSpace(token)
+	if !strings.HasPrefix(trimmed, "@") {
+		return "", false
+	}
+	name := strings.TrimPrefix(trimmed, "@")
+	name = strings.Trim(name, ".,!?;:()[]{}<>\"'")
+	if name == "" {
+		return "", false
+	}
+	return name, true
+}
+
+func styleForColorTag(token string) (lipgloss.Style, bool) {
+	colorName := strings.ToLower(strings.TrimPrefix(strings.TrimSpace(token), "#"))
+	color, ok := inlineColorMap[colorName]
+	if !ok {
+		return lipgloss.Style{}, false
+	}
+	return lipgloss.NewStyle().Foreground(color), true
+}
+
+var inlineColorMap = map[string]lipgloss.Color{
+	"red":     lipgloss.Color("196"),
+	"orange":  lipgloss.Color("208"),
+	"yellow":  lipgloss.Color("226"),
+	"green":   lipgloss.Color("46"),
+	"cyan":    lipgloss.Color("51"),
+	"blue":    lipgloss.Color("39"),
+	"purple":  lipgloss.Color("141"),
+	"magenta": lipgloss.Color("201"),
+	"pink":    lipgloss.Color("213"),
+	"white":   lipgloss.Color("255"),
+	"gray":    lipgloss.Color("248"),
+	"grey":    lipgloss.Color("248"),
 }
 
 func appendMessage(messages []models.Message, msg models.Message) []models.Message {

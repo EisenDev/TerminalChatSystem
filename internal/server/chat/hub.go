@@ -611,7 +611,7 @@ func pingEffectDuration(effect string, override int) int {
 	case "flash":
 		return 1600
 	case "fku":
-		return 1800
+		return 3200
 	default:
 		return 900
 	}
