@@ -908,7 +908,7 @@ func (m Model) viewChat() string {
 
 	view := lipgloss.JoinVertical(lipgloss.Left, top, statusBar, body, footer)
 	if m.activeEffect != nil {
-		if m.activeEffect.Effect == "flash" {
+		if m.activeEffect.Effect == "flash" || m.activeEffect.Effect == "fku" {
 			return m.effectOverlay()
 		}
 		view = overlayBox(view, m.effectOverlay())
@@ -1177,33 +1177,69 @@ func (m Model) flashOverlay() string {
 }
 
 func (m Model) fkuOverlay() string {
-	frames := [][]string{
-		{
-			"███████╗██╗  ██╗██╗   ██╗",
-			"██╔════╝██║ ██╔╝██║   ██║",
-			"█████╗  █████╔╝ ██║   ██║",
-			"██╔══╝  ██╔═██╗ ██║   ██║",
-			"██║     ██║  ██╗╚██████╔╝",
-			"╚═╝     ╚═╝  ╚═╝ ╚═════╝ ",
-		},
-		{
-			"▓▓▓▓▓▓▓╗▓▓╗  ▓▓╗▓▓╗   ▓▓╗",
-			"▓▓╔════╝▓▓║ ▓▓╔╝▓▓║   ▓▓║",
-			"▓▓▓▓▓╗  ▓▓▓▓▓╔╝ ▓▓║   ▓▓║",
-			"▓▓╔══╝  ▓▓╔═▓▓╗ ▓▓║   ▓▓║",
-			"▓▓║     ▓▓║  ▓▓╗╚▓▓▓▓▓▓╔╝",
-			"╚═╝     ╚═╝  ╚═╝ ╚═════╝ ",
-		},
+	width := max(20, m.width)
+	rows := max(10, m.height)
+	progress := m.effectProgress()
+	centerRow := rows / 2
+	stage := 0
+	if progress >= 0.33 && progress < 0.66 {
+		stage = 1
+	} else if progress >= 0.66 {
+		stage = 2
 	}
-	frame := frames[(m.emoteFrame/2)%len(frames)]
-	lines := []string{
-		centerText(max(30, m.width-4), strings.ToUpper(m.activeEffect.From)+" SAYS"),
+
+	closedHands := []string{
+		"      __      __      ",
+		"   __(  )____(  )__   ",
+		"  /  _        _   /   ",
+		"  \\_/ \\______/ \\_/    ",
 	}
-	for _, line := range frame {
-		lines = append(lines, centerText(max(30, m.width-4), line))
+	openHands := []string{
+		"\\o/              \\o/",
+		" |      OPEN      | ",
+		"/ \\              / \\",
 	}
-	lines = append(lines, centerText(max(30, m.width-4), "terminal disrespect delivered"))
-	return lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Bold(true).Padding(1, 2).Render(strings.Join(lines, "\n"))
+	textFrame := []string{
+		"███████╗██╗   ██╗ ██████╗██╗  ██╗",
+		"██╔════╝██║   ██║██╔════╝██║ ██╔╝",
+		"█████╗  ██║   ██║██║     █████╔╝ ",
+		"██╔══╝  ██║   ██║██║     ██╔═██╗ ",
+		"██║     ╚██████╔╝╚██████╗██║  ██╗",
+		"╚═╝      ╚═════╝  ╚═════╝╚═╝  ╚═╝",
+		"",
+		fmt.Sprintf("          YOU!!! %s", strings.ToUpper(m.activeEffect.Target)),
+	}
+
+	frame := closedHands
+	title := fmt.Sprintf("%s is winding up...", strings.ToUpper(m.activeEffect.From))
+	if stage == 1 {
+		frame = openHands
+		title = fmt.Sprintf("%s opened both hands", strings.ToUpper(m.activeEffect.From))
+	}
+	if stage == 2 {
+		frame = textFrame
+		title = fmt.Sprintf("%s says:", strings.ToUpper(m.activeEffect.From))
+	}
+
+	baseStyle := lipgloss.NewStyle().Background(lipgloss.Color("16")).Foreground(lipgloss.Color("196"))
+	block := make([]string, 0, rows)
+	for i := 0; i < rows; i++ {
+		rowText := strings.Repeat(" ", width)
+		switch {
+		case i == centerRow-4:
+			rowText = centerText(width, " TERMINAL ALERT ")
+		case i == centerRow-2:
+			rowText = centerText(width, title)
+		case i >= centerRow && i < centerRow+len(frame):
+			rowText = centerText(width, frame[i-centerRow])
+		}
+		rowStyle := baseStyle
+		if i == centerRow-4 || i == centerRow-2 || (i >= centerRow && i < centerRow+len(frame)) {
+			rowStyle = rowStyle.Bold(true)
+		}
+		block = append(block, rowStyle.Render(padRight(rowText, width)))
+	}
+	return "\a" + strings.Join(block, "\n")
 }
 
 func (m Model) effectProgress() float64 {
