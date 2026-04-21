@@ -449,6 +449,8 @@ func (m Model) updateChatKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) updateEmotePicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	pageSize := 10
+	pageStart := (m.emoteCursor / pageSize) * pageSize
 	switch msg.Type {
 	case tea.KeyEsc:
 		m.showEmotePicker = false
@@ -461,14 +463,31 @@ func (m Model) updateEmotePicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.emoteCursor < len(emoteCatalog)-1 {
 			m.emoteCursor++
 		}
+	case tea.KeyLeft, tea.KeyPgUp:
+		if m.emoteCursor-pageSize >= 0 {
+			m.emoteCursor -= pageSize
+		} else {
+			m.emoteCursor = 0
+		}
+	case tea.KeyRight, tea.KeyPgDown:
+		if m.emoteCursor+pageSize < len(emoteCatalog) {
+			m.emoteCursor += pageSize
+		} else if len(emoteCatalog) > 0 {
+			m.emoteCursor = len(emoteCatalog) - 1
+		}
 	case tea.KeyEnter:
 		m.sendEmote(emoteCatalog[m.emoteCursor].ID)
 		m.showEmotePicker = false
 	}
-	if msg.String() >= "1" && msg.String() <= "9" {
-		n, _ := strconv.Atoi(msg.String())
-		if item, ok := emoteByNumber(n); ok {
-			m.sendEmote(item.ID)
+	switch msg.String() {
+	case "1", "2", "3", "4", "5", "6", "7", "8", "9", "0":
+		slot := 10
+		if msg.String() != "0" {
+			slot, _ = strconv.Atoi(msg.String())
+		}
+		index := pageStart + slot - 1
+		if index >= 0 && index < len(emoteCatalog) {
+			m.sendEmote(emoteCatalog[index].ID)
 			m.showEmotePicker = false
 		}
 	}
@@ -1000,9 +1019,25 @@ func (m Model) commandGuideLines() []string {
 }
 
 func (m Model) emotePickerLines() []string {
-	lines := []string{"Use Up/Down + Enter or press 1-9"}
-	for i, item := range emoteCatalog {
-		line := fmt.Sprintf("%d. %s", item.Number, item.Name)
+	pageSize := 10
+	if len(emoteCatalog) == 0 {
+		return []string{"No emotes loaded"}
+	}
+	page := (m.emoteCursor / pageSize) + 1
+	pageStart := (m.emoteCursor / pageSize) * pageSize
+	pageEnd := min(len(emoteCatalog), pageStart+pageSize)
+	totalPages := (len(emoteCatalog) + pageSize - 1) / pageSize
+	lines := []string{
+		fmt.Sprintf("Page %d/%d  Use Up/Down, Left/Right, Enter", page, totalPages),
+		"Press 1-9 or 0 for the visible slots",
+	}
+	for i := pageStart; i < pageEnd; i++ {
+		item := emoteCatalog[i]
+		slot := ((i - pageStart) + 1) % 10
+		if slot == 0 {
+			slot = 10
+		}
+		line := fmt.Sprintf("%d. %s", slot, item.Name)
 		if i == m.emoteCursor {
 			line = lipgloss.NewStyle().Foreground(lipgloss.Color("221")).Render("> " + line)
 		}
@@ -1188,17 +1223,8 @@ func (m Model) fkuOverlay() string {
 		stage = 2
 	}
 
-	closedHands := []string{
-		"      __      __      ",
-		"   __(  )____(  )__   ",
-		"  /  _        _   /   ",
-		"  \\_/ \\______/ \\_/    ",
-	}
-	openHands := []string{
-		"\\o/              \\o/",
-		" |      OPEN      | ",
-		"/ \\              / \\",
-	}
+	closedHands := combineHandFrame(pixelHandLeft, pixelHandRight, 4)
+	openHands := combineHandFrame(pixelHandLeft, pixelHandRight, 18)
 	textFrame := []string{
 		"███████╗██╗   ██╗ ██████╗██╗  ██╗",
 		"██╔════╝██║   ██║██╔════╝██║ ██╔╝",
@@ -1231,7 +1257,7 @@ func (m Model) fkuOverlay() string {
 		case i == centerRow-2:
 			rowText = centerText(width, title)
 		case i >= centerRow && i < centerRow+len(frame):
-			rowText = centerText(width, frame[i-centerRow])
+			rowText = centerANSI(width, frame[i-centerRow])
 		}
 		rowStyle := baseStyle
 		if i == centerRow-4 || i == centerRow-2 || (i >= centerRow && i < centerRow+len(frame)) {
@@ -1382,6 +1408,34 @@ func padRight(text string, width int) string {
 		return text[:width]
 	}
 	return text + strings.Repeat(" ", width-len(text))
+}
+
+func centerANSI(width int, text string) string {
+	visible := lipgloss.Width(text)
+	if width <= visible {
+		return text
+	}
+	padding := (width - visible) / 2
+	return strings.Repeat(" ", padding) + text
+}
+
+func combineHandFrame(left, right string, gap int) []string {
+	leftLines := strings.Split(left, "\n")
+	rightLines := strings.Split(right, "\n")
+	size := max(len(leftLines), len(rightLines))
+	lines := make([]string, 0, size)
+	for i := 0; i < size; i++ {
+		l := ""
+		r := ""
+		if i < len(leftLines) {
+			l = leftLines[i]
+		}
+		if i < len(rightLines) {
+			r = rightLines[i]
+		}
+		lines = append(lines, l+strings.Repeat(" ", gap)+r)
+	}
+	return lines
 }
 
 func colorHandle(handle string) lipgloss.Style {
