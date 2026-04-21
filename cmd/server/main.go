@@ -13,6 +13,7 @@ import (
 	"github.com/eisen/teamchat/internal/server/call"
 	"github.com/eisen/teamchat/internal/server/chat"
 	"github.com/eisen/teamchat/internal/server/httpapi"
+	"github.com/eisen/teamchat/internal/server/media"
 	"github.com/eisen/teamchat/internal/server/presence"
 	"github.com/eisen/teamchat/internal/server/store"
 	"github.com/eisen/teamchat/internal/shared/config"
@@ -53,10 +54,15 @@ func main() {
 	}
 
 	st := store.NewPostgres(dbpool)
+	mediaStorage, err := media.NewStorage(cfg)
+	if err != nil {
+		logger.Error("configure media storage", "error", err)
+		os.Exit(1)
+	}
 	presenceSvc := presence.NewManager(logger, redisClient)
 	callMgr := call.NewNoopManager(logger)
 	hub := chat.NewHub(logger, st, presenceSvc, callMgr, cfg.DefaultChannel, cfg.HistoryLimit)
-	server := httpapi.NewServer(logger, hub, cfg)
+	server := httpapi.NewServer(logger, hub, st, mediaStorage, cfg)
 
 	go hub.Run(ctx)
 

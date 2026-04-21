@@ -20,6 +20,9 @@ type Store interface {
 	ListWorkspaceUsers(ctx context.Context, workspaceID string) ([]models.User, error)
 	ListHistory(ctx context.Context, channelID string, limit int) ([]models.Message, error)
 	SaveMessage(ctx context.Context, workspaceID, channelID string, user models.User, body string, messageType models.MessageType) (models.Message, error)
+	CreateMediaAsset(ctx context.Context, asset models.MediaAsset) (models.MediaAsset, error)
+	GetMediaAsset(ctx context.Context, id string) (models.MediaAsset, error)
+	CountMediaByKind(ctx context.Context, channelID string, kind models.MediaKind) (int, error)
 	UpdateUserHandle(ctx context.Context, userID, handle string) (models.User, error)
 }
 
@@ -152,9 +155,11 @@ func (s *Postgres) ListHistory(ctx context.Context, channelID string, limit int)
 	}
 	rows, err := s.db.Query(ctx, `
 		select m.id::text, m.workspace_id::text, m.channel_id::text, c.name, m.user_id::text, u.handle, m.body, m.message_type, m.created_at
+		       , coalesce(ma.id::text, ''), coalesce(ma.kind, ''), coalesce('/pub/' || ma.id::text, '')
 		from messages m
 		join users u on u.id = m.user_id
 		join channels c on c.id = m.channel_id
+		left join media_assets ma on ma.message_id = m.id
 		where m.channel_id = $1
 		  and m.created_at >= now() - interval '7 days'
 		order by m.created_at desc
@@ -167,9 +172,13 @@ func (s *Postgres) ListHistory(ctx context.Context, channelID string, limit int)
 	var reversed []models.Message
 	for rows.Next() {
 		var msg models.Message
-		if err := rows.Scan(&msg.ID, &msg.WorkspaceID, &msg.ChannelID, &msg.ChannelName, &msg.UserID, &msg.UserHandle, &msg.Body, &msg.MessageType, &msg.CreatedAt); err != nil {
+		var mediaID, mediaKind, mediaURL string
+		if err := rows.Scan(&msg.ID, &msg.WorkspaceID, &msg.ChannelID, &msg.ChannelName, &msg.UserID, &msg.UserHandle, &msg.Body, &msg.MessageType, &msg.CreatedAt, &mediaID, &mediaKind, &mediaURL); err != nil {
 			return nil, err
 		}
+		msg.MediaID = mediaID
+		msg.MediaKind = models.MediaKind(mediaKind)
+		msg.MediaURL = mediaURL
 		reversed = append(reversed, msg)
 	}
 	if err := rows.Err(); err != nil {
@@ -195,6 +204,41 @@ func (s *Postgres) SaveMessage(ctx context.Context, workspaceID, channelID strin
 	msg.UserHandle = user.Handle
 	_ = s.db.QueryRow(ctx, `select name from channels where id = $1`, channelID).Scan(&msg.ChannelName)
 	return msg, err
+}
+
+func (s *Postgres) CreateMediaAsset(ctx context.Context, asset models.MediaAsset) (models.MediaAsset, error) {
+	query := `
+		insert into media_assets (workspace_id, channel_id, message_id, user_id, kind, object_key, file_name, content_type, byte_size)
+		values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		returning id::text, workspace_id::text, channel_id::text, message_id::text, user_id::text, kind, object_key, file_name, content_type, byte_size, created_at`
+	var out models.MediaAsset
+	err := s.db.QueryRow(ctx, query,
+		asset.WorkspaceID, asset.ChannelID, asset.MessageID, asset.UserID, asset.Kind, asset.ObjectKey, asset.FileName, asset.ContentType, asset.ByteSize,
+	).Scan(&out.ID, &out.WorkspaceID, &out.ChannelID, &out.MessageID, &out.UserID, &out.Kind, &out.ObjectKey, &out.FileName, &out.ContentType, &out.ByteSize, &out.CreatedAt)
+	out.UserHandle = asset.UserHandle
+	out.PublicURL = asset.PublicURL
+	return out, err
+}
+
+func (s *Postgres) GetMediaAsset(ctx context.Context, id string) (models.MediaAsset, error) {
+	query := `
+		select ma.id::text, ma.workspace_id::text, ma.channel_id::text, ma.message_id::text, ma.user_id::text,
+		       u.handle, ma.kind, ma.object_key, ma.file_name, ma.content_type, ma.byte_size, ma.created_at
+		from media_assets ma
+		join users u on u.id = ma.user_id
+		where ma.id = $1`
+	var out models.MediaAsset
+	err := s.db.QueryRow(ctx, query, id).Scan(
+		&out.ID, &out.WorkspaceID, &out.ChannelID, &out.MessageID, &out.UserID, &out.UserHandle,
+		&out.Kind, &out.ObjectKey, &out.FileName, &out.ContentType, &out.ByteSize, &out.CreatedAt,
+	)
+	return out, err
+}
+
+func (s *Postgres) CountMediaByKind(ctx context.Context, channelID string, kind models.MediaKind) (int, error) {
+	var count int
+	err := s.db.QueryRow(ctx, `select count(*) from media_assets where channel_id = $1 and kind = $2`, channelID, kind).Scan(&count)
+	return count, err
 }
 
 func (s *Postgres) UpdateUserHandle(ctx context.Context, userID, handle string) (models.User, error) {

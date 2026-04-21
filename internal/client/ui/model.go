@@ -1,11 +1,17 @@
 package ui
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"hash/fnv"
+	"io"
 	"log/slog"
+	"mime/multipart"
+	"net/http"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"runtime"
 	"strconv"
@@ -699,6 +705,14 @@ func (m *Model) handleSlashCommand(text string) tea.Cmd {
 		delete(m.clearedMessages, m.app.Current)
 		m.refreshViewport()
 		m.app.Notification = "restored local messages for #" + m.app.Current
+	case "/image", "/video", "/file":
+		if len(fields) < 2 {
+			m.app.Notification = "usage: " + fields[0] + " <path>"
+			return nil
+		}
+		path := strings.Join(fields[1:], " ")
+		m.app.Notification = "uploading " + path + "..."
+		return m.runMediaUpload(fields[0], path)
 	case "/update":
 		m.app.Notification = "updating termichat..."
 		return runSelfUpdate()
@@ -937,6 +951,12 @@ func (m *Model) renderMessage(msg models.Message) string {
 		if item, ok := emoteByID(msg.Body); ok {
 			body = item.Frames[(m.emoteFrame/max(1, int(item.Duration/(180*time.Millisecond))))%len(item.Frames)]
 		}
+	} else if msg.MessageType == models.MessageTypeMedia && msg.MediaURL != "" {
+		url := msg.MediaURL
+		if strings.HasPrefix(url, "/") {
+			url = strings.TrimRight(m.cfg.ServerURL, "/") + url
+		}
+		body = msg.Body + "\n" + url
 	}
 	bodyStyle := lipgloss.NewStyle().Foreground(colorForHandle(msg.UserHandle))
 	if msg.MessageType == models.MessageTypeEmote {
@@ -1204,6 +1224,9 @@ func (m Model) commandGuideLines() []string {
 		"/me <action>",
 		"/clear",
 		"/restore --message",
+		"/image <path>",
+		"/video <path>",
+		"/file <path>",
 		"/update",
 		"/quit",
 	}
@@ -1651,6 +1674,52 @@ func runSelfUpdate() tea.Cmd {
 			return updateResultMsg{Message: msg}
 		}
 		return updateResultMsg{Message: fmt.Sprintf("updated to %s, restart termichat", buildinfo.Version)}
+	}
+}
+
+func (m Model) runMediaUpload(kindCmd, path string) tea.Cmd {
+	return func() tea.Msg {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return updateResultMsg{Message: "upload failed: " + err.Error()}
+		}
+		var body bytes.Buffer
+		writer := multipart.NewWriter(&body)
+		_ = writer.WriteField("workspace", m.app.Workspace)
+		_ = writer.WriteField("code", m.cfg.WorkspaceCode)
+		_ = writer.WriteField("handle", m.app.Handle)
+		_ = writer.WriteField("device_token", m.deviceToken)
+		_ = writer.WriteField("channel", m.app.Current)
+		part, err := writer.CreateFormFile("file", filepath.Base(path))
+		if err != nil {
+			return updateResultMsg{Message: "upload failed: " + err.Error()}
+		}
+		if _, err := part.Write(data); err != nil {
+			return updateResultMsg{Message: "upload failed: " + err.Error()}
+		}
+		if err := writer.Close(); err != nil {
+			return updateResultMsg{Message: "upload failed: " + err.Error()}
+		}
+		endpoint := strings.TrimRight(m.cfg.ServerURL, "/") + "/api/media/upload"
+		req, err := http.NewRequest(http.MethodPost, endpoint, &body)
+		if err != nil {
+			return updateResultMsg{Message: "upload failed: " + err.Error()}
+		}
+		req.Header.Set("Content-Type", writer.FormDataContentType())
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return updateResultMsg{Message: "upload failed: " + err.Error()}
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode >= 300 {
+			out, _ := io.ReadAll(resp.Body)
+			msg := strings.TrimSpace(string(out))
+			if msg == "" {
+				msg = resp.Status
+			}
+			return updateResultMsg{Message: "upload failed: " + msg}
+		}
+		return updateResultMsg{Message: kindCmd[1:] + " uploaded, chat will update shortly"}
 	}
 }
 

@@ -113,6 +113,10 @@ func (h *Hub) HandleInbound(sess *Session, event protocol.Envelope) {
 	h.inbound <- inboundEvent{session: sess, event: event}
 }
 
+func (h *Hub) PublishMessage(workspaceID string, msg models.Message) {
+	h.broadcastToWorkspace(workspaceID, protocol.MustEnvelope(protocol.ServerMessageNew, msg))
+}
+
 func NewSession(id, remoteIP string) *Session {
 	return &Session{
 		id:          id,

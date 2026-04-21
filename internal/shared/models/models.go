@@ -16,6 +16,15 @@ const (
 	MessageTypeChat   MessageType = "chat"
 	MessageTypeSystem MessageType = "system"
 	MessageTypeEmote  MessageType = "emote"
+	MessageTypeMedia  MessageType = "media"
+)
+
+type MediaKind string
+
+const (
+	MediaKindImage MediaKind = "image"
+	MediaKindVideo MediaKind = "video"
+	MediaKindFile  MediaKind = "file"
 )
 
 type CallStatus string
@@ -59,7 +68,26 @@ type Message struct {
 	UserHandle  string      `json:"user_handle"`
 	Body        string      `json:"body"`
 	MessageType MessageType `json:"message_type"`
+	MediaID     string      `json:"media_id,omitempty"`
+	MediaKind   MediaKind   `json:"media_kind,omitempty"`
+	MediaURL    string      `json:"media_url,omitempty"`
 	CreatedAt   time.Time   `json:"created_at"`
+}
+
+type MediaAsset struct {
+	ID          string    `json:"id"`
+	WorkspaceID string    `json:"workspace_id"`
+	ChannelID   string    `json:"channel_id"`
+	MessageID   string    `json:"message_id"`
+	UserID      string    `json:"user_id"`
+	UserHandle  string    `json:"user_handle"`
+	Kind        MediaKind `json:"kind"`
+	ObjectKey   string    `json:"object_key"`
+	FileName    string    `json:"file_name"`
+	ContentType string    `json:"content_type"`
+	ByteSize    int64     `json:"byte_size"`
+	PublicURL   string    `json:"public_url"`
+	CreatedAt   time.Time `json:"created_at"`
 }
 
 type Presence struct {

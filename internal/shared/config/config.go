@@ -24,6 +24,13 @@ type Server struct {
 	PingInterval   time.Duration
 	WriteTimeout   time.Duration
 	ReadLimitBytes int64
+	PublicBaseURL  string
+	R2Endpoint     string
+	R2AccessKey    string
+	R2SecretKey    string
+	R2Bucket       string
+	R2PublicBase   string
+	MediaMaxBytes  int64
 }
 
 type Client struct {
@@ -51,6 +58,13 @@ func LoadServer() (Server, error) {
 		PingInterval:   getEnvDuration("CHAT_PING_INTERVAL", 25*time.Second),
 		WriteTimeout:   getEnvDuration("CHAT_WRITE_TIMEOUT", 10*time.Second),
 		ReadLimitBytes: int64(getEnvInt("CHAT_WS_READ_LIMIT", 1024*1024)),
+		PublicBaseURL:  getEnv("CHAT_PUBLIC_BASE_URL", "https://termichat.zeraynce.com"),
+		R2Endpoint:     os.Getenv("CHAT_R2_ENDPOINT"),
+		R2AccessKey:    os.Getenv("CHAT_R2_ACCESS_KEY"),
+		R2SecretKey:    os.Getenv("CHAT_R2_SECRET_KEY"),
+		R2Bucket:       os.Getenv("CHAT_R2_BUCKET"),
+		R2PublicBase:   os.Getenv("CHAT_R2_PUBLIC_BASE"),
+		MediaMaxBytes:  int64(getEnvInt("CHAT_MEDIA_MAX_BYTES", 25*1024*1024)),
 	}
 	if cfg.DatabaseURL == "" {
 		return Server{}, fmt.Errorf("CHAT_DATABASE_URL is required")

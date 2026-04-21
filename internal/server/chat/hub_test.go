@@ -59,6 +59,15 @@ func (f *fakeStore) SaveMessage(_ context.Context, workspaceID, channelID string
 	f.messages = append(f.messages, msg)
 	return msg, nil
 }
+func (f *fakeStore) CreateMediaAsset(context.Context, models.MediaAsset) (models.MediaAsset, error) {
+	return models.MediaAsset{}, nil
+}
+func (f *fakeStore) GetMediaAsset(context.Context, string) (models.MediaAsset, error) {
+	return models.MediaAsset{}, nil
+}
+func (f *fakeStore) CountMediaByKind(context.Context, string, models.MediaKind) (int, error) {
+	return 0, nil
+}
 func (f *fakeStore) UpdateUserHandle(_ context.Context, userID, handle string) (models.User, error) {
 	f.user.Handle = handle
 	f.user.ID = userID
