@@ -16,6 +16,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/eisen/teamchat/internal/client/notify"
 	"github.com/eisen/teamchat/internal/client/profile"
 	"github.com/eisen/teamchat/internal/client/state"
 	clientws "github.com/eisen/teamchat/internal/client/ws"
@@ -725,6 +726,7 @@ func (m Model) handleWSEvent(evt clientws.Event) (tea.Model, tea.Cmd) {
 		m.app.HighlightedHandle = payload.From
 		m.highlightUntil[payload.From] = time.Now().Add(6 * time.Second)
 		m.app.Notification = pingNotification(payload)
+		notify.Send("Notification from "+payload.From, "Open TermiChat")
 	case protocol.ServerPingEffect:
 		payload, _ := protocol.DecodePayload[protocol.PingEffectPayload](*evt.Envelope)
 		if m.effectsEnabled && !m.mutedEffectUsers[payload.From] {
@@ -739,6 +741,7 @@ func (m Model) handleWSEvent(evt clientws.Event) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.app.Notification = fmt.Sprintf("%s launched %s", payload.From, payload.Effect)
+		notify.Send("Notification from "+payload.From, "Open TermiChat")
 	case protocol.ServerHandleChanged:
 		payload, _ := protocol.DecodePayload[protocol.HandleChangedPayload](*evt.Envelope)
 		if m.app.Handle == payload.OldHandle {
@@ -811,7 +814,11 @@ func (m *Model) renderMessage(msg models.Message) string {
 			body = item.Frames[(m.emoteFrame/max(1, int(item.Duration/(180*time.Millisecond))))%len(item.Frames)]
 		}
 	}
-	block := headerStyle.Render(header) + "\n" + lipgloss.NewStyle().Foreground(colorForHandle(msg.UserHandle)).Render(body)
+	bodyStyle := lipgloss.NewStyle().Foreground(colorForHandle(msg.UserHandle))
+	if msg.MessageType == models.MessageTypeEmote {
+		bodyStyle = lipgloss.NewStyle()
+	}
+	block := headerStyle.Render(header) + "\n" + bodyStyle.Render(body)
 	if msg.UserHandle == m.app.Handle {
 		return lipgloss.NewStyle().Width(contentWidth).Align(lipgloss.Right).Render(block)
 	}
@@ -1000,6 +1007,11 @@ func (m Model) emotePickerLines() []string {
 			line = lipgloss.NewStyle().Foreground(lipgloss.Color("221")).Render("> " + line)
 		}
 		lines = append(lines, line)
+	}
+	if len(emoteCatalog) > 0 {
+		item := emoteCatalog[m.emoteCursor]
+		frame := item.Frames[(m.emoteFrame/max(1, int(item.Duration/(180*time.Millisecond))))%len(item.Frames)]
+		lines = append(lines, "", "Preview", frame)
 	}
 	return lines
 }

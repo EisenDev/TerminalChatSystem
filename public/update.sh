@@ -5,14 +5,15 @@ BASE_URL=${TEAMCHAT_BASE_URL:-http://termichat.zeraynce.com}
 TMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TMP_DIR"' EXIT INT TERM
 
-TARGET_BIN=${TARGET_BIN:-$(command -v termichat 2>/dev/null || true)}
-if [ -z "$TARGET_BIN" ]; then
-  if [ -x "$HOME/.local/bin/termichat" ]; then
-    TARGET_BIN="$HOME/.local/bin/termichat"
-  else
-    echo "termichat is not installed yet. Use /install.sh first."
-    exit 1
-  fi
+TARGET_BIN=${TARGET_BIN:-"$HOME/.local/bin/termichat"}
+TARGET_DIR=$(dirname "$TARGET_BIN")
+mkdir -p "$TARGET_DIR"
+
+if [ ! -x "$TARGET_BIN" ] && [ -n "$(command -v termichat 2>/dev/null || true)" ] && [ "$(command -v termichat)" != "$TARGET_BIN" ]; then
+  echo "termichat is installed outside the user-local path."
+  echo "This updater only manages $HOME/.local/bin/termichat."
+  echo "Reinstall with /install.sh to move it to the user-local path."
+  exit 1
 fi
 
 ARCHIVE="$TMP_DIR/termichat-linux-amd64.tar.gz"
@@ -27,19 +28,8 @@ else
 fi
 
 tar -xzf "$ARCHIVE" -C "$TMP_DIR"
-
-if [ ! -w "$(dirname "$TARGET_BIN")" ]; then
-  if command -v sudo >/dev/null 2>&1; then
-    sudo install -m 0755 "$TMP_DIR/termichat" "$TARGET_BIN.new"
-    sudo mv -f "$TARGET_BIN.new" "$TARGET_BIN"
-  else
-    echo "Need write access to $(dirname "$TARGET_BIN") to update termichat."
-    exit 1
-  fi
-else
-  install -m 0755 "$TMP_DIR/termichat" "$TARGET_BIN.new"
-  mv -f "$TARGET_BIN.new" "$TARGET_BIN"
-fi
+install -m 0755 "$TMP_DIR/termichat" "$TARGET_BIN.new"
+mv -f "$TARGET_BIN.new" "$TARGET_BIN"
 
 echo "Updated termichat at $TARGET_BIN"
 echo "Run:"
