@@ -83,6 +83,7 @@ type Model struct {
 	showEmotePicker   bool
 	showLobbyBrowser  bool
 	showCommandPanel  bool
+	commandPadView    string
 	userRoster        []models.User
 	channelCursor     int
 	emoteCursor       int
@@ -395,11 +396,17 @@ func (m Model) updateChatKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case tea.KeyEsc:
 		if m.showEmotePicker {
 			m.showEmotePicker = false
+			if m.commandPadView == "emotes" {
+				m.commandPadView = ""
+			}
 			return m, nil
 		}
 		if m.showCommandPanel {
 			m.showCommandPanel = false
 			m.showHelp = false
+			if m.commandPadView == "commands" {
+				m.commandPadView = ""
+			}
 			return m, nil
 		}
 	case tea.KeyPgUp:
@@ -594,6 +601,7 @@ func (m *Model) handleSlashCommand(text string) tea.Cmd {
 			}
 		}
 		m.showEmotePicker = true
+		m.commandPadView = "emotes"
 	case "/me":
 		if len(fields) < 2 {
 			m.app.Notification = "usage: /me <action>"
@@ -628,10 +636,12 @@ func (m *Model) handleSlashCommand(text string) tea.Cmd {
 	case "/help":
 		m.showHelp = true
 		m.showCommandPanel = true
+		m.commandPadView = "commands"
 	case "/commands":
 		if len(fields) == 2 && fields[1] == "--help" {
 			m.showCommandPanel = true
 			m.showHelp = true
+			m.commandPadView = "commands"
 			m.app.Notification = "commands opened"
 			return nil
 		}
@@ -640,6 +650,7 @@ func (m *Model) handleSlashCommand(text string) tea.Cmd {
 		m.showHelp = false
 		m.showEmotePicker = false
 		m.showCommandPanel = false
+		m.commandPadView = ""
 		m.showLobbyBrowser = false
 		m.phase = phaseSetup
 		m.setupStep = 0
@@ -961,11 +972,11 @@ func (m Model) renderLobbyPanel() string {
 
 func (m Model) renderCommandPad() string {
 	lines := []string{"/commands --help"}
-	if m.showCommandPanel {
+	if m.commandPadView == "commands" || m.showCommandPanel || m.showHelp {
 		lines = append(lines, "")
 		lines = append(lines, m.commandGuideLines()...)
 	}
-	if m.showEmotePicker {
+	if m.commandPadView == "emotes" || m.showEmotePicker {
 		lines = append(lines, "", "Emotes")
 		lines = append(lines, m.emotePickerLines()...)
 	}
@@ -1088,10 +1099,10 @@ func (m Model) banner() string {
 
 func (m Model) pixelIcon() string {
 	frames := []string{
-		"██ ██\n█████\n ██ █\n█████\n██ ██",
-		" ████\n██ ██\n█████\n██ ██\n████ ",
-		"██ ██\n█████\n█ ██ \n█████\n██ ██",
+		"██ ██\n█████\n██ ██\n█████\n██ ██",
 		"████ \n██ ██\n█████\n██ ██\n ████",
+		"██ ██\n█████\n██ ██\n█████\n██ ██",
+		" ████\n██ ██\n█████\n██ ██\n████ ",
 	}
 	frame := frames[m.emoteFrame%len(frames)]
 	return lipgloss.NewStyle().Foreground(lipgloss.Color("87")).Bold(true).Render(frame)
