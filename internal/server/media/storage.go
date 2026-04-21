@@ -5,13 +5,12 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/url"
 	"strings"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/credentials"
-	"github.com/aws/aws-sdk-go-v2/service/s3"
 	sharedcfg "github.com/eisen/teamchat/internal/shared/config"
+	"github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/credentials"
 )
 
 type Storage interface {
@@ -27,7 +26,7 @@ func (NoopStorage) Put(context.Context, string, string, []byte) (string, error) 
 func (NoopStorage) Configured() bool { return false }
 
 type R2Storage struct {
-	client     *s3.Client
+	client     *minio.Client
 	bucket     string
 	publicBase string
 }
@@ -36,17 +35,18 @@ func NewStorage(cfg sharedcfg.Server) (Storage, error) {
 	if cfg.R2Endpoint == "" || cfg.R2AccessKey == "" || cfg.R2SecretKey == "" || cfg.R2Bucket == "" || cfg.R2PublicBase == "" {
 		return NoopStorage{}, nil
 	}
-	awsCfg, err := config.LoadDefaultConfig(context.Background(),
-		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(cfg.R2AccessKey, cfg.R2SecretKey, "")),
-		config.WithRegion("auto"),
-	)
+	endpoint, err := normalizeEndpoint(cfg.R2Endpoint)
 	if err != nil {
 		return nil, err
 	}
-	client := s3.NewFromConfig(awsCfg, func(o *s3.Options) {
-		o.UsePathStyle = true
-		o.BaseEndpoint = aws.String(strings.TrimRight(cfg.R2Endpoint, "/"))
+	client, err := minio.New(endpoint, &minio.Options{
+		Creds:  credentials.NewStaticV4(cfg.R2AccessKey, cfg.R2SecretKey, ""),
+		Secure: strings.HasPrefix(strings.ToLower(strings.TrimSpace(cfg.R2Endpoint)), "https://"),
+		Region: "auto",
 	})
+	if err != nil {
+		return nil, err
+	}
 	return &R2Storage{
 		client:     client,
 		bucket:     cfg.R2Bucket,
@@ -57,16 +57,28 @@ func NewStorage(cfg sharedcfg.Server) (Storage, error) {
 func (r *R2Storage) Configured() bool { return r != nil && r.client != nil }
 
 func (r *R2Storage) Put(ctx context.Context, key, contentType string, body []byte) (string, error) {
-	_, err := r.client.PutObject(ctx, &s3.PutObjectInput{
-		Bucket:      aws.String(r.bucket),
-		Key:         aws.String(key),
-		Body:        bytes.NewReader(body),
-		ContentType: aws.String(contentType),
+	_, err := r.client.PutObject(ctx, r.bucket, key, bytes.NewReader(body), int64(len(body)), minio.PutObjectOptions{
+		ContentType: contentType,
 	})
 	if err != nil {
 		return "", err
 	}
 	return r.publicBase + "/" + key, nil
+}
+
+func normalizeEndpoint(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", fmt.Errorf("empty R2 endpoint")
+	}
+	if strings.Contains(raw, "://") {
+		u, err := url.Parse(raw)
+		if err != nil {
+			return "", err
+		}
+		return u.Host, nil
+	}
+	return strings.TrimRight(raw, "/"), nil
 }
 
 func ReadAllLimited(src io.Reader, maxBytes int64) ([]byte, error) {

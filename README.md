@@ -144,6 +144,26 @@ Docker helper:
 make run-server-docker
 ```
 
+### Optional media uploads with Cloudflare R2
+
+Set these on the server when you want `/image`, `/video`, and `/file` uploads to work:
+
+```bash
+export CHAT_PUBLIC_BASE_URL='https://termichat.zeraynce.com'
+export CHAT_R2_ENDPOINT='https://<accountid>.r2.cloudflarestorage.com'
+export CHAT_R2_ACCESS_KEY='<r2-access-key-id>'
+export CHAT_R2_SECRET_KEY='<r2-secret-access-key>'
+export CHAT_R2_BUCKET='termichat'
+export CHAT_R2_PUBLIC_BASE='https://pub.termichat.zeraynce.com'
+export CHAT_MEDIA_MAX_BYTES='26214400'
+```
+
+The server uploads media into R2, stores a media record in PostgreSQL, and serves a public viewer page at `/pub/<media-id>`. The client commands are:
+
+- `/image /path/to/file.png`
+- `/video /path/to/file.mp4`
+- `/file /path/to/file.zip`
+
 ### Start the client
 
 ```bash
