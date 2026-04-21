@@ -1005,20 +1005,17 @@ func renderStyledLine(line string, baseStyle lipgloss.Style, currentHandle strin
 }
 
 func renderHeadingLine(text string, baseStyle lipgloss.Style) string {
-	rows := []strings.Builder{{}, {}, {}} // 3-row compact terminal heading
-	for _, r := range strings.ToUpper(text) {
-		glyph, ok := headingFont[r]
-		if !ok {
-			glyph = []string{string(r) + " ", string(r) + " ", string(r) + " "}
-		}
-		for i := range rows {
-			rows[i].WriteString(glyph[i])
-		}
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return ""
 	}
+	title := strings.ToUpper(text)
+	rule := strings.Repeat("═", max(8, len([]rune(title))+4))
+	style := baseStyle.Bold(true)
 	return strings.Join([]string{
-		baseStyle.Bold(true).Render(rows[0].String()),
-		baseStyle.Bold(true).Render(rows[1].String()),
-		baseStyle.Bold(true).Render(rows[2].String()),
+		style.Render(rule),
+		style.Underline(true).Render("  " + title + "  "),
+		style.Render(rule),
 	}, "\n")
 }
 
@@ -1557,52 +1554,6 @@ var inlineColorMap = map[string]lipgloss.Color{
 	"white":   lipgloss.Color("255"),
 	"gray":    lipgloss.Color("248"),
 	"grey":    lipgloss.Color("248"),
-}
-
-var headingFont = map[rune][]string{
-	' ': {"   ", "   ", "   "},
-	'!': {"█ ", "█ ", "▀ "},
-	'?': {"██ ", " ▄ ", " ▀ "},
-	'.': {"   ", "   ", "▀  "},
-	',': {"   ", " ▄ ", "▄  "},
-	'-': {"   ", "██ ", "   "},
-	'_': {"   ", "   ", "██ "},
-	'0': {"██ ", "█ █", "██ "},
-	'1': {"█  ", "█  ", "█  "},
-	'2': {"██ ", " ▄█", "██ "},
-	'3': {"██ ", " ▄█", "██ "},
-	'4': {"█ █", "███", "  █"},
-	'5': {"██ ", "█▄ ", "██ "},
-	'6': {"██ ", "█▄ ", "██ "},
-	'7': {"███", " ▄ ", "█  "},
-	'8': {"██ ", "██ ", "██ "},
-	'9': {"██ ", "███", "  █"},
-	'A': {"██ ", "███", "█ █"},
-	'B': {"██ ", "██▌", "██ "},
-	'C': {"███", "█  ", "███"},
-	'D': {"██ ", "█ █", "██ "},
-	'E': {"███", "██ ", "███"},
-	'F': {"███", "██ ", "█  "},
-	'G': {"███", "█ █", "███"},
-	'H': {"█ █", "███", "█ █"},
-	'I': {"███", " █ ", "███"},
-	'J': {" ██", "  █", "██ "},
-	'K': {"█ █", "██ ", "█ █"},
-	'L': {"█  ", "█  ", "███"},
-	'M': {"█▄█", "███", "█ █"},
-	'N': {"███", "███", "█ █"},
-	'O': {"██ ", "█ █", "██ "},
-	'P': {"██ ", "██ ", "█  "},
-	'Q': {"██ ", "█ █", "███"},
-	'R': {"██ ", "██ ", "█ █"},
-	'S': {"███", "█▄ ", "███"},
-	'T': {"███", " █ ", " █ "},
-	'U': {"█ █", "█ █", "███"},
-	'V': {"█ █", "█ █", " █ "},
-	'W': {"█ █", "███", "█▄█"},
-	'X': {"█ █", " █ ", "█ █"},
-	'Y': {"█ █", " █ ", " █ "},
-	'Z': {"███", " ▄ ", "███"},
 }
 
 func appendMessage(messages []models.Message, msg models.Message) []models.Message {
