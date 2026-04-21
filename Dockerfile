@@ -5,9 +5,10 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/teamchat-server ./cmd/server
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/termichat ./cmd/client
-RUN CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o /out/termichat.exe ./cmd/client
+RUN go clean -cache \
+ && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -buildvcs=false -o /out/teamchat-server ./cmd/server \
+ && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -buildvcs=false -o /out/termichat ./cmd/client \
+ && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -a -buildvcs=false -o /out/termichat.exe ./cmd/client
 RUN mkdir -p /out/package \
  && cp /out/termichat /out/package/termichat \
  && cp packaging/linux-client/install.sh /out/package/install.sh \
