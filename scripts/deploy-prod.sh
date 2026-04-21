@@ -35,6 +35,7 @@ docker compose -f docker-compose.prod.yml exec -T postgres psql -U teamchat -d t
 docker compose -f docker-compose.prod.yml exec -T postgres psql -U teamchat -d teamchat < migrations/000002_emotes.up.sql
 docker compose -f docker-compose.prod.yml exec -T postgres psql -U teamchat -d teamchat < migrations/000003_workspace_codes.up.sql
 docker compose -f docker-compose.prod.yml exec -T postgres psql -U teamchat -d teamchat < migrations/000004_device_accounts.up.sql
+docker compose -f docker-compose.prod.yml exec -T postgres psql -U teamchat -d teamchat < migrations/000005_workspace_device_accounts.up.sql
 docker compose -f docker-compose.prod.yml exec -T postgres psql -U teamchat -d teamchat < scripts/seed.sql
 
 docker compose -f docker-compose.prod.yml up -d --force-recreate app

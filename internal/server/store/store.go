@@ -268,10 +268,10 @@ func (s *Postgres) joinWorkspaceTx(ctx context.Context, tx pgx.Tx, name, code, h
 			return JoinWorkspaceResult{}, err
 		}
 		if _, err := tx.Exec(ctx, `
-			insert into device_accounts (device_fingerprint, user_id)
-			values ($1, $2)
-			on conflict (device_fingerprint) do update
-			set last_seen_at = now()`, fingerprint, user.ID); err != nil {
+			insert into workspace_device_accounts (workspace_id, device_fingerprint, user_id)
+			values ($1, $2, $3)
+			on conflict (workspace_id, device_fingerprint) do update
+			set user_id = excluded.user_id, last_seen_at = now()`, workspace.ID, fingerprint, user.ID); err != nil {
 			return JoinWorkspaceResult{}, err
 		}
 		if _, err := tx.Exec(ctx, `
@@ -299,10 +299,11 @@ func (s *Postgres) joinWorkspaceTx(ctx context.Context, tx pgx.Tx, name, code, h
 
 	err = tx.QueryRow(ctx, `
 		select u.id::text, u.handle, u.display_name, u.created_at
-		from device_accounts da
+		from workspace_device_accounts da
 		join users u on u.id = da.user_id
-		where da.device_fingerprint = $1`,
-		fingerprint,
+		where da.workspace_id = $1
+		  and da.device_fingerprint = $2`,
+		workspace.ID, fingerprint,
 	).Scan(&user.ID, &user.Handle, &user.DisplayName, &user.CreatedAt)
 	switch {
 	case err == nil:
@@ -318,17 +319,20 @@ func (s *Postgres) joinWorkspaceTx(ctx context.Context, tx pgx.Tx, name, code, h
 			return JoinWorkspaceResult{}, fmt.Errorf("create device handle: %w", err)
 		}
 		if _, err := tx.Exec(ctx, `
-			insert into device_accounts (device_fingerprint, user_id)
-			values ($1, $2)
-			on conflict (device_fingerprint) do update
-			set user_id = excluded.user_id, last_seen_at = now()`, fingerprint, user.ID); err != nil {
+			insert into workspace_device_accounts (workspace_id, device_fingerprint, user_id)
+			values ($1, $2, $3)
+			on conflict (workspace_id, device_fingerprint) do update
+			set user_id = excluded.user_id, last_seen_at = now()`, workspace.ID, fingerprint, user.ID); err != nil {
 			return JoinWorkspaceResult{}, err
 		}
 	default:
 		return JoinWorkspaceResult{}, err
 	}
 
-	if _, err := tx.Exec(ctx, `update device_accounts set last_seen_at = now() where device_fingerprint = $1`, fingerprint); err != nil {
+	if _, err := tx.Exec(ctx, `
+		update workspace_device_accounts
+		set last_seen_at = now()
+		where workspace_id = $1 and device_fingerprint = $2`, workspace.ID, fingerprint); err != nil {
 		return JoinWorkspaceResult{}, err
 	}
 	if _, err := tx.Exec(ctx, `

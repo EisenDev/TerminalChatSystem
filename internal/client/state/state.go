@@ -9,26 +9,29 @@ import (
 )
 
 type App struct {
-	Handle      string
-	ServerURL   string
-	Workspace   string
-	Connected   bool
-	StatusText  string
-	Current     string
-	Channels    []string
-	Users       []string
-	UserMeta    []UserEntry
-	Messages    []models.Message
-	Typing      map[string]time.Time
-	Call        call.State
-	Notification string
+	Handle            string
+	ServerURL         string
+	Workspace         string
+	WorkspaceOwnerID  string
+	Connected         bool
+	StatusText        string
+	Current           string
+	Channels          []string
+	Users             []string
+	UserMeta          []UserEntry
+	Messages          []models.Message
+	Typing            map[string]time.Time
+	Call              call.State
+	Notification      string
 	HighlightedHandle string
 }
 
 type UserEntry struct {
+	ID      string
 	Handle  string
 	Online  bool
 	Channel string
+	Role    string
 }
 
 func New() App {
@@ -64,10 +67,16 @@ func (a *App) SetUsersDetailed(users []models.User, presenceList []models.Presen
 			suffix = " *"
 		}
 		a.Users = append(a.Users, u.Handle+suffix)
+		role := "Member"
+		if a.WorkspaceOwnerID != "" && u.ID == a.WorkspaceOwnerID {
+			role = "Owner"
+		}
 		a.UserMeta = append(a.UserMeta, UserEntry{
+			ID:      u.ID,
 			Handle:  u.Handle,
 			Online:  online,
 			Channel: channelByHandle[u.Handle],
+			Role:    role,
 		})
 	}
 	sort.Strings(a.Users)

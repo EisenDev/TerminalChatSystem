@@ -639,6 +639,7 @@ func (m Model) handleWSEvent(evt clientws.Event) (tea.Model, tea.Cmd) {
 	case protocol.ServerWorkspaceJoined:
 		payload, _ := protocol.DecodePayload[protocol.WorkspaceJoinedPayload](*evt.Envelope)
 		m.app.Workspace = payload.Workspace.Name
+		m.app.WorkspaceOwnerID = payload.Workspace.OwnerUserID
 		m.app.Current = payload.CurrentChannel
 		m.userRoster = payload.Users
 		m.app.SetChannels(payload.Channels)
@@ -675,10 +676,12 @@ func (m Model) handleWSEvent(evt clientws.Event) (tea.Model, tea.Cmd) {
 		m.rebuildUsers()
 	case protocol.ServerUserJoined:
 		payload, _ := protocol.DecodePayload[protocol.UserEventPayload](*evt.Envelope)
-		m.app.Notification = payload.Handle + " joined"
+		m.app.Notification = payload.Handle + " joined the lobby"
+		_ = m.ws.Send(protocol.ClientRequestUsers, struct{}{})
 	case protocol.ServerUserLeft:
 		payload, _ := protocol.DecodePayload[protocol.UserEventPayload](*evt.Envelope)
-		m.app.Notification = payload.Handle + " left"
+		m.app.Notification = payload.Handle + " left the lobby"
+		_ = m.ws.Send(protocol.ClientRequestUsers, struct{}{})
 	case protocol.ServerTypingUpdate:
 		payload, _ := protocol.DecodePayload[protocol.TypingUpdatePayload](*evt.Envelope)
 		if payload.Active {
@@ -849,7 +852,7 @@ func (m Model) viewChat() string {
 		panelStyle(false, leftWidth).Render("Lobby\n\n"+m.renderLobbyPanel()),
 		panelStyle(false, leftWidth).Render("Command Pad\n\n"+m.renderCommandPad()),
 	)
-	usersBox := panelStyle(m.activePane == 2, rightWidth).Render("Coworkers\n\n" + m.renderUsers())
+	usersBox := panelStyle(m.activePane == 2, rightWidth).Render("Members\n\n" + m.renderUsers())
 	messageBox := panelStyle(m.activePane == 1, centerWidth).Render("Messages\n\n" + m.viewport.View())
 	body := lipgloss.JoinHorizontal(lipgloss.Top, leftColumn, messageBox, usersBox)
 
@@ -908,7 +911,7 @@ func (m Model) renderCommandPad() string {
 
 func (m Model) renderUsers() string {
 	if len(m.app.UserMeta) == 0 {
-		return "no coworkers visible"
+		return "no members visible"
 	}
 	lines := make([]string, 0, len(m.app.UserMeta))
 	for _, user := range m.app.UserMeta {
@@ -917,9 +920,7 @@ func (m Model) renderUsers() string {
 			indicator = "●"
 		}
 		line := indicator + " " + colorHandle(user.Handle).Render(user.Handle)
-		if user.Channel != "" {
-			line += lipgloss.NewStyle().Foreground(lipgloss.Color("242")).Render("  #" + user.Channel)
-		}
+		line += lipgloss.NewStyle().Foreground(lipgloss.Color("242")).Render("  #" + user.Role)
 		if until, ok := m.highlightUntil[user.Handle]; ok && until.After(time.Now()) {
 			line = lipgloss.NewStyle().Background(lipgloss.Color("52")).Render(line)
 		}
@@ -957,7 +958,7 @@ func (m Model) commandGuideLines() []string {
 func (m Model) emotePickerLines() []string {
 	lines := []string{"Use Up/Down + Enter or press 1-9"}
 	for i, item := range emoteCatalog {
-		line := fmt.Sprintf("%d. %-10s %s", item.Number, item.Name, item.Frames[0])
+		line := fmt.Sprintf("%d. %s", item.Number, item.Name)
 		if i == m.emoteCursor {
 			line = lipgloss.NewStyle().Foreground(lipgloss.Color("221")).Render("> " + line)
 		}
