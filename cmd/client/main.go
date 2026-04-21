@@ -17,6 +17,7 @@ func main() {
 	program := tea.NewProgram(
 		ui.NewModel(cfg, logger),
 		tea.WithAltScreen(),
+		tea.WithMouseCellMotion(),
 	)
 
 	if _, err := program.Run(); err != nil {

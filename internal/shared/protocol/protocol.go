@@ -120,9 +120,10 @@ type TypingPayload struct {
 }
 
 type PingPayload struct {
-	Handle string `json:"handle,omitempty"`
-	Effect string `json:"effect,omitempty"`
-	Scope  string `json:"scope,omitempty"`
+	Handle     string `json:"handle,omitempty"`
+	Effect     string `json:"effect,omitempty"`
+	Scope      string `json:"scope,omitempty"`
+	DurationMS int    `json:"duration_ms,omitempty"`
 }
 
 type ChangeHandlePayload struct {

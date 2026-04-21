@@ -236,6 +236,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m.updateChatKeys(msg)
 
+	case tea.MouseMsg:
+		if m.phase == phaseChat {
+			var cmd tea.Cmd
+			m.viewport, cmd = m.viewport.Update(msg)
+			return m, cmd
+		}
+		return m, nil
+
 	case wsEventMsg:
 		return m.handleWSEvent(clientws.Event(msg))
 	}
@@ -393,6 +401,20 @@ func (m Model) updateChatKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.showHelp = false
 			return m, nil
 		}
+	case tea.KeyPgUp:
+		var cmd tea.Cmd
+		m.viewport, cmd = m.viewport.Update(msg)
+		return m, cmd
+	case tea.KeyPgDown:
+		var cmd tea.Cmd
+		m.viewport, cmd = m.viewport.Update(msg)
+		return m, cmd
+	case tea.KeyHome:
+		m.viewport.GotoTop()
+		return m, nil
+	case tea.KeyEnd:
+		m.viewport.GotoBottom()
+		return m, nil
 	case tea.KeyEnter:
 		text := strings.TrimSpace(m.input.Value())
 		if text == "" {
@@ -408,6 +430,15 @@ func (m Model) updateChatKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			Body:    text,
 		})
 		m.input.Reset()
+		return m, nil
+	}
+
+	switch msg.String() {
+	case "ctrl+u", "ctrl+b":
+		m.viewport.LineUp(max(1, m.viewport.Height/2))
+		return m, nil
+	case "ctrl+d", "ctrl+f":
+		m.viewport.LineDown(max(1, m.viewport.Height/2))
 		return m, nil
 	}
 
@@ -488,15 +519,15 @@ func (m *Model) handleSlashCommand(text string) tea.Cmd {
 		_ = m.ws.Send(protocol.ClientRequestChannels, struct{}{})
 		m.app.Notification = strings.Join(prefixList("#", m.app.Channels), ", ")
 	case "/ping":
-		target, effect, err := parsePingCommand(fields)
+		target, effect, durationMS, err := parsePingCommand(fields)
 		if err != nil {
 			m.app.Notification = err.Error()
 			return nil
 		}
 		if target == "all" {
-			_ = m.ws.Send(protocol.ClientPingAll, protocol.PingPayload{Handle: "all", Effect: effect, Scope: "all"})
+			_ = m.ws.Send(protocol.ClientPingAll, protocol.PingPayload{Handle: "all", Effect: effect, Scope: "all", DurationMS: durationMS})
 		} else {
-			_ = m.ws.Send(protocol.ClientPingUser, protocol.PingPayload{Handle: target, Effect: effect, Scope: "user"})
+			_ = m.ws.Send(protocol.ClientPingUser, protocol.PingPayload{Handle: target, Effect: effect, Scope: "user", DurationMS: durationMS})
 		}
 	case "/effects":
 		if len(fields) < 2 {
@@ -742,6 +773,7 @@ func (m *Model) rebuildUsers() {
 }
 
 func (m *Model) refreshViewport() {
+	stickToBottom := m.viewport.AtBottom()
 	lines := make([]string, 0, len(m.messagesByChannel[m.app.Current])+1)
 	for _, msg := range m.messagesByChannel[m.app.Current] {
 		lines = append(lines, m.renderMessage(msg))
@@ -756,7 +788,9 @@ func (m *Model) refreshViewport() {
 		lines = append(lines, "", lipgloss.NewStyle().Foreground(lipgloss.Color("246")).Render(strings.Join(typers, ", ")+" typing..."))
 	}
 	m.viewport.SetContent(strings.Join(lines, "\n"))
-	m.viewport.GotoBottom()
+	if stickToBottom || len(lines) <= m.viewport.Height {
+		m.viewport.GotoBottom()
+	}
 }
 
 func (m *Model) renderMessage(msg models.Message) string {
@@ -867,6 +901,9 @@ func (m Model) viewChat() string {
 
 	view := lipgloss.JoinVertical(lipgloss.Left, top, statusBar, body, footer)
 	if m.activeEffect != nil {
+		if m.activeEffect.Effect == "flash" {
+			return m.effectOverlay()
+		}
 		view = overlayBox(view, m.effectOverlay())
 	}
 	return view
@@ -1093,8 +1130,8 @@ func (m Model) normalPingOverlay() string {
 }
 
 func (m Model) flashOverlay() string {
-	width := max(20, m.width-2)
-	rows := min(8, max(4, m.height/3))
+	width := max(20, m.width)
+	rows := max(10, m.height)
 	progress := m.effectProgress()
 	bg := lipgloss.Color("255")
 	if progress > 0.45 {
@@ -1104,13 +1141,26 @@ func (m Model) flashOverlay() string {
 		bg = lipgloss.Color("252")
 	}
 	line := strings.Repeat(" ", width)
-	block := make([]string, 0, rows+2)
+	block := make([]string, 0, rows)
 	jitter := strings.Repeat(" ", m.shakeOffset())
+	style := lipgloss.NewStyle().Background(bg).Foreground(lipgloss.Color("16"))
+	centerRow := rows / 2
 	for i := 0; i < rows; i++ {
-		block = append(block, jitter+lipgloss.NewStyle().Background(bg).Render(line))
+		rowText := line
+		switch i {
+		case centerRow - 1:
+			rowText = centerText(width, fmt.Sprintf(" FLASHED BY %s ", strings.ToUpper(m.activeEffect.From)))
+		case centerRow:
+			rowText = centerText(width, "████████████████████████████")
+		case centerRow + 1:
+			rowText = centerText(width, fmt.Sprintf(" %0.1fs ", m.activeEffect.EndsAt.Sub(m.activeEffect.StartedAt).Seconds()))
+		}
+		rowStyle := style
+		if i >= centerRow-1 && i <= centerRow+1 {
+			rowStyle = rowStyle.Bold(true)
+		}
+		block = append(block, jitter+rowStyle.Render(padRight(rowText, width)))
 	}
-	block = append(block, jitter+lipgloss.NewStyle().Foreground(lipgloss.Color("16")).Background(bg).Bold(true).Render(centerText(width, fmt.Sprintf(" FLASHED BY %s ", strings.ToUpper(m.activeEffect.From)))))
-	block = append(block, jitter+lipgloss.NewStyle().Foreground(lipgloss.Color("16")).Background(bg).Render(centerText(width, "████ ALERT ████")))
 	return "\a" + strings.Join(block, "\n")
 }
 
@@ -1215,12 +1265,13 @@ func formatUsersSummary(users []state.UserEntry) string {
 	return strings.Join(parts, ", ")
 }
 
-func parsePingCommand(fields []string) (string, string, error) {
+func parsePingCommand(fields []string) (string, string, int, error) {
 	if len(fields) < 2 {
-		return "", "", fmt.Errorf("usage: /ping <handle|all> [--flash|--fku]")
+		return "", "", 0, fmt.Errorf("usage: /ping <handle|all> [--flash|--fku] [-5sc]")
 	}
 	target := strings.ToLower(strings.TrimSpace(fields[1]))
 	effect := "normal"
+	durationMS := 0
 	for _, field := range fields[2:] {
 		switch field {
 		case "--flash":
@@ -1228,10 +1279,35 @@ func parsePingCommand(fields []string) (string, string, error) {
 		case "--fku":
 			effect = "fku"
 		default:
-			return "", "", fmt.Errorf("unknown ping flag %s", field)
+			duration, ok := parsePingDurationFlag(field)
+			if !ok {
+				return "", "", 0, fmt.Errorf("unknown ping flag %s", field)
+			}
+			durationMS = duration
 		}
 	}
-	return target, effect, nil
+	return target, effect, durationMS, nil
+}
+
+func parsePingDurationFlag(flag string) (int, bool) {
+	raw := strings.TrimSpace(strings.ToLower(flag))
+	if raw == "" {
+		return 0, false
+	}
+	raw = strings.TrimPrefix(raw, "-")
+	switch {
+	case strings.HasSuffix(raw, "sc"):
+		raw = strings.TrimSuffix(raw, "sc")
+	case strings.HasSuffix(raw, "s"):
+		raw = strings.TrimSuffix(raw, "s")
+	default:
+		return 0, false
+	}
+	seconds, err := strconv.Atoi(raw)
+	if err != nil || seconds <= 0 {
+		return 0, false
+	}
+	return seconds * 1000, true
 }
 
 func pingNotification(payload protocol.PingReceivedPayload) string {
@@ -1251,6 +1327,13 @@ func centerText(width int, text string) string {
 	}
 	padding := (width - len(text)) / 2
 	return strings.Repeat(" ", padding) + text
+}
+
+func padRight(text string, width int) string {
+	if len(text) >= width {
+		return text[:width]
+	}
+	return text + strings.Repeat(" ", width-len(text))
 }
 
 func colorHandle(handle string) lipgloss.Style {

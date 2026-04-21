@@ -373,13 +373,14 @@ func (h *Hub) handleEvent(ctx context.Context, sess *Session, event protocol.Env
 		if delivered == 0 {
 			return fmt.Errorf("user %s not found", target)
 		}
+		duration := pingEffectDuration(effect, payload.DurationMS)
 		_ = h.deliverToHandle(sess.workspace.ID, target, protocol.MustEnvelope(protocol.ServerPingEffect, protocol.PingEffectPayload{
 			From:       sess.user.Handle,
 			Target:     target,
 			Channel:    sess.current.Name,
 			Effect:     effect,
 			Scope:      "user",
-			DurationMS: pingEffectDuration(effect),
+			DurationMS: duration,
 		}))
 		h.deliverToHandle(sess.workspace.ID, target, protocol.MustEnvelope(protocol.ServerSystemNotice, protocol.SystemNoticePayload{
 			Message: fmt.Sprintf("%s pinged you (%s)", sess.user.Handle, effect),
@@ -401,13 +402,14 @@ func (h *Hub) handleEvent(ctx context.Context, sess *Session, event protocol.Env
 		if err := h.checkPingCooldown(sess.user.ID, "all", effect); err != nil {
 			return err
 		}
+		duration := pingEffectDuration(effect, payload.DurationMS)
 		envEffect := protocol.MustEnvelope(protocol.ServerPingEffect, protocol.PingEffectPayload{
 			From:       sess.user.Handle,
 			Target:     "all",
 			Channel:    sess.current.Name,
 			Effect:     effect,
 			Scope:      "all",
-			DurationMS: pingEffectDuration(effect),
+			DurationMS: duration,
 		})
 		envReceived := protocol.MustEnvelope(protocol.ServerPingReceived, protocol.PingReceivedPayload{
 			From:    sess.user.Handle,
@@ -594,7 +596,17 @@ func normalizePingEffect(effect string) string {
 	}
 }
 
-func pingEffectDuration(effect string) int {
+func pingEffectDuration(effect string, override int) int {
+	if override > 0 {
+		switch {
+		case override < 900:
+			return 900
+		case override > 10000:
+			return 10000
+		default:
+			return override
+		}
+	}
 	switch effect {
 	case "flash":
 		return 1600
