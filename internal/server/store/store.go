@@ -323,11 +323,7 @@ func (s *Postgres) joinWorkspaceTx(ctx context.Context, tx pgx.Tx, name, code, h
 		if err != nil {
 			return JoinWorkspaceResult{}, err
 		}
-		if _, err := tx.Exec(ctx, `
-			insert into workspace_device_accounts (workspace_id, device_fingerprint, user_id)
-			values ($1, $2, $3)
-			on conflict (workspace_id, device_fingerprint) do update
-			set user_id = excluded.user_id, last_seen_at = now()`, workspace.ID, fingerprint, user.ID); err != nil {
+		if err := upsertWorkspaceDeviceAccount(ctx, tx, workspace.ID, fingerprint, user.ID); err != nil {
 			return JoinWorkspaceResult{}, err
 		}
 		if _, err := tx.Exec(ctx, `
@@ -371,11 +367,7 @@ func (s *Postgres) joinWorkspaceTx(ctx context.Context, tx pgx.Tx, name, code, h
 		if user, err = findOrCreateUserByHandle(ctx, tx, handle); err != nil {
 			return JoinWorkspaceResult{}, fmt.Errorf("create device handle: %w", err)
 		}
-		if _, err := tx.Exec(ctx, `
-			insert into workspace_device_accounts (workspace_id, device_fingerprint, user_id)
-			values ($1, $2, $3)
-			on conflict (workspace_id, device_fingerprint) do update
-			set user_id = excluded.user_id, last_seen_at = now()`, workspace.ID, fingerprint, user.ID); err != nil {
+		if err := upsertWorkspaceDeviceAccount(ctx, tx, workspace.ID, fingerprint, user.ID); err != nil {
 			return JoinWorkspaceResult{}, err
 		}
 	default:
@@ -397,4 +389,23 @@ func (s *Postgres) joinWorkspaceTx(ctx context.Context, tx pgx.Tx, name, code, h
 	result.Workspace = workspace
 	result.User = user
 	return result, nil
+}
+
+func upsertWorkspaceDeviceAccount(ctx context.Context, tx pgx.Tx, workspaceID, fingerprint, userID string) error {
+	if _, err := tx.Exec(ctx, `
+		delete from workspace_device_accounts
+		where workspace_id = $1
+		  and (device_fingerprint = $2 or user_id = $3)`,
+		workspaceID, fingerprint, userID,
+	); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `
+		insert into workspace_device_accounts (workspace_id, device_fingerprint, user_id)
+		values ($1, $2, $3)`,
+		workspaceID, fingerprint, userID,
+	); err != nil {
+		return err
+	}
+	return nil
 }
