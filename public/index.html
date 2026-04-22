@@ -188,8 +188,8 @@
         <div class="pill">Update</div>
         <h3>Update TermiChat</h3>
         <div class="copy-wrap"><button class="copy-btn" type="button">Copy</button><pre class="code">curl -fsSL https://termichat.zeraynce.com/update.sh | sh
-rehash</pre></div>
-        <p>This updates the existing <code>termichat</code> binary in place, keeps your current config, and refreshes your shell command cache in the current terminal.</p>
+rehash 2&gt;/dev/null || hash -r 2&gt;/dev/null || true</pre></div>
+        <p>This updates the existing <code>termichat</code> binary in place, keeps your current config, and refreshes your shell command cache for both <code>zsh</code> and <code>bash</code>. Opening a new terminal also works.</p>
       </section>
 
       <section class="card">
@@ -205,6 +205,7 @@ rehash</pre></div>
           <li>If this device already joined that lobby before, TermiChat auto-joins without asking for your username again.</li>
           <li>If it is a new lobby or a new device, you will be asked for a username before entering.</li>
           <li>Type <code>/list</code> in Search Lobby to browse the lobbies already remembered on this device.</li>
+          <li>Send media by file path, for example <code>/image /home/user/Pictures/cat.png</code>, <code>/video /home/user/Videos/demo.mp4</code>, or <code>/file /home/user/Downloads/archive.zip</code>.</li>
         </ul>
       </section>
 

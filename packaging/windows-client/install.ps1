@@ -10,7 +10,7 @@ New-Item -ItemType Directory -Force -Path $ConfigDir | Out-Null
 Copy-Item (Join-Path $PSScriptRoot "termichat.exe") $BinaryPath -Force
 
 $config = @"
-CHAT_SERVER_URL=http://termichat.zeraynce.com
+CHAT_SERVER_URL=https://termichat.zeraynce.com
 CHAT_WORKSPACE=acme
 CHAT_WORKSPACE_CODE=acme123
 CHAT_DEFAULT_CHANNEL=lobby

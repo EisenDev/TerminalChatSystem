@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 set -eu
 
-BASE_URL=${TEAMCHAT_BASE_URL:-http://termichat.zeraynce.com}
+BASE_URL=${TEAMCHAT_BASE_URL:-https://termichat.zeraynce.com}
 TMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TMP_DIR"' EXIT INT TERM
 
@@ -33,5 +33,5 @@ mv -f "$TARGET_BIN.new" "$TARGET_BIN"
 
 echo "Updated termichat at $TARGET_BIN"
 echo "Run:"
-echo "  rehash"
+echo "  rehash 2>/dev/null || hash -r 2>/dev/null || true"
 echo "  termichat"
