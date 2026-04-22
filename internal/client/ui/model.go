@@ -1032,6 +1032,11 @@ func renderStyledLine(line string, baseStyle lipgloss.Style, currentHandle strin
 			out.WriteString(style.Render(part))
 			continue
 		}
+		if linkText, linkURL, ok := urlToken(part); ok {
+			style := currentStyle.Underline(true).Foreground(lipgloss.Color("81"))
+			out.WriteString(osc8Link(linkURL, style.Render(linkText)))
+			continue
+		}
 		out.WriteString(currentStyle.Render(part))
 	}
 	return out.String()
@@ -1570,6 +1575,26 @@ func mentionTarget(token string) (string, bool) {
 		return "", false
 	}
 	return name, true
+}
+
+func urlToken(token string) (string, string, bool) {
+	trimmed := strings.TrimSpace(token)
+	if !strings.HasPrefix(trimmed, "http://") && !strings.HasPrefix(trimmed, "https://") {
+		return "", "", false
+	}
+	urlPart := strings.TrimRight(trimmed, ".,!?;:)]}\"'")
+	suffix := strings.TrimPrefix(trimmed, urlPart)
+	if urlPart == "" {
+		return "", "", false
+	}
+	return urlPart + suffix, urlPart, true
+}
+
+func osc8Link(url, label string) string {
+	if url == "" || label == "" {
+		return label
+	}
+	return "\x1b]8;;" + url + "\x1b\\" + label + "\x1b]8;;\x1b\\"
 }
 
 func styleForColorTag(token string, currentStyle lipgloss.Style) (lipgloss.Style, bool) {
