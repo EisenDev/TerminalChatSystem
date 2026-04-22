@@ -7,8 +7,10 @@ import (
 	"hash/fnv"
 	"io"
 	"log/slog"
+	"mime"
 	"mime/multipart"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -449,12 +451,20 @@ func (m Model) updateChatKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case tea.KeyDown:
 		m.recallInput(1)
 		return m, nil
+	case tea.KeyCtrlV:
+		m.app.Notification = "reading clipboard..."
+		return m, m.runClipboardUpload()
 	case tea.KeyEnter:
 		text := strings.TrimSpace(m.input.Value())
 		if text == "" {
 			return m, nil
 		}
 		m.pushInputHistory(text)
+		if cmd, note, ok := m.autoUploadInput(text); ok {
+			m.app.Notification = note
+			m.input.Reset()
+			return m, cmd
+		}
 		if strings.HasPrefix(text, "/") {
 			cmd := m.handleSlashCommand(text)
 			m.input.Reset()
@@ -713,6 +723,9 @@ func (m *Model) handleSlashCommand(text string) tea.Cmd {
 		path := strings.Join(fields[1:], " ")
 		m.app.Notification = "uploading " + path + "..."
 		return m.runMediaUpload(fields[0], path)
+	case "/paste":
+		m.app.Notification = "reading clipboard..."
+		return m.runClipboardUpload()
 	case "/update":
 		m.app.Notification = "updating termichat..."
 		return runSelfUpdate()
@@ -1227,6 +1240,7 @@ func (m Model) commandGuideLines() []string {
 		"/image <path>",
 		"/video <path>",
 		"/file <path>",
+		"/paste",
 		"/update",
 		"/quit",
 	}
@@ -1677,12 +1691,52 @@ func runSelfUpdate() tea.Cmd {
 	}
 }
 
+func (m Model) autoUploadInput(text string) (tea.Cmd, string, bool) {
+	path, ok := resolveLocalFileReference(text)
+	if !ok {
+		return nil, "", false
+	}
+	kind, _, err := detectUploadKindFromPath(path)
+	if err != nil {
+		return nil, "upload failed: " + err.Error(), true
+	}
+	return m.runMediaUpload(kind, path), "uploading " + path + "...", true
+}
+
 func (m Model) runMediaUpload(kindCmd, path string) tea.Cmd {
 	return func() tea.Msg {
-		data, err := os.ReadFile(path)
+		resolvedPath, ok := resolveLocalFileReference(path)
+		if !ok {
+			resolvedPath = path
+		}
+		data, err := os.ReadFile(resolvedPath)
 		if err != nil {
 			return updateResultMsg{Message: "upload failed: " + err.Error()}
 		}
+		contentType := mime.TypeByExtension(strings.ToLower(filepath.Ext(resolvedPath)))
+		if contentType == "" && len(data) > 0 {
+			contentType = http.DetectContentType(data)
+		}
+		if contentType == "" {
+			contentType = "application/octet-stream"
+		}
+		return m.runMediaUploadData(kindCmd, filepath.Base(resolvedPath), data, contentType)()
+	}
+}
+
+func (m Model) runClipboardUpload() tea.Cmd {
+	return func() tea.Msg {
+		fileName, data, contentType, err := readClipboardMedia()
+		if err != nil {
+			return updateResultMsg{Message: "clipboard upload failed: " + err.Error()}
+		}
+		kindCmd := detectUploadKindFromContentType(contentType)
+		return m.runMediaUploadData(kindCmd, fileName, data, contentType)()
+	}
+}
+
+func (m Model) runMediaUploadData(kindCmd, fileName string, data []byte, contentType string) tea.Cmd {
+	return func() tea.Msg {
 		var body bytes.Buffer
 		writer := multipart.NewWriter(&body)
 		_ = writer.WriteField("workspace", m.app.Workspace)
@@ -1690,7 +1744,7 @@ func (m Model) runMediaUpload(kindCmd, path string) tea.Cmd {
 		_ = writer.WriteField("handle", m.app.Handle)
 		_ = writer.WriteField("device_token", m.deviceToken)
 		_ = writer.WriteField("channel", m.app.Current)
-		part, err := writer.CreateFormFile("file", filepath.Base(path))
+		part, err := writer.CreateFormFile("file", fileName)
 		if err != nil {
 			return updateResultMsg{Message: "upload failed: " + err.Error()}
 		}
@@ -1721,6 +1775,206 @@ func (m Model) runMediaUpload(kindCmd, path string) tea.Cmd {
 		}
 		return updateResultMsg{Message: kindCmd[1:] + " uploaded, chat will update shortly"}
 	}
+}
+
+func detectUploadKindFromPath(path string) (string, string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", "", err
+	}
+	contentType := mime.TypeByExtension(strings.ToLower(filepath.Ext(path)))
+	if contentType == "" && len(data) > 0 {
+		contentType = http.DetectContentType(data)
+	}
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	return detectUploadKindFromContentType(contentType), contentType, nil
+}
+
+func detectUploadKindFromContentType(contentType string) string {
+	contentType = strings.ToLower(strings.TrimSpace(contentType))
+	switch {
+	case strings.HasPrefix(contentType, "image/"):
+		return "/image"
+	case strings.HasPrefix(contentType, "video/"):
+		return "/video"
+	default:
+		return "/file"
+	}
+}
+
+func resolveLocalFileReference(raw string) (string, bool) {
+	raw = strings.TrimSpace(raw)
+	raw = strings.Trim(raw, "\"'")
+	if raw == "" {
+		return "", false
+	}
+	if strings.HasPrefix(raw, "file://") {
+		u, err := url.Parse(raw)
+		if err != nil {
+			return "", false
+		}
+		raw, _ = url.PathUnescape(u.Path)
+	}
+	if strings.HasPrefix(raw, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			raw = filepath.Join(home, raw[2:])
+		}
+	}
+	info, err := os.Stat(raw)
+	if err != nil || info.IsDir() {
+		return "", false
+	}
+	return raw, true
+}
+
+func readClipboardMedia() (string, []byte, string, error) {
+	switch runtime.GOOS {
+	case "linux":
+		return readClipboardMediaLinux()
+	case "windows":
+		text, err := clipboardTextWindows()
+		if err != nil {
+			return "", nil, "", err
+		}
+		path, ok := resolveLocalFileReference(text)
+		if !ok {
+			return "", nil, "", fmt.Errorf("clipboard does not contain a supported image or file path")
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return "", nil, "", err
+		}
+		contentType := mime.TypeByExtension(strings.ToLower(filepath.Ext(path)))
+		if contentType == "" && len(data) > 0 {
+			contentType = http.DetectContentType(data)
+		}
+		if contentType == "" {
+			contentType = "application/octet-stream"
+		}
+		return filepath.Base(path), data, contentType, nil
+	default:
+		return "", nil, "", fmt.Errorf("clipboard media upload is not supported on %s yet", runtime.GOOS)
+	}
+}
+
+func readClipboardMediaLinux() (string, []byte, string, error) {
+	if fileName, data, contentType, ok := readWaylandClipboardImage(); ok {
+		return fileName, data, contentType, nil
+	}
+	if fileName, data, contentType, ok := readXClipClipboardImage(); ok {
+		return fileName, data, contentType, nil
+	}
+	text, err := clipboardTextLinux()
+	if err != nil {
+		return "", nil, "", err
+	}
+	path, ok := resolveLocalFileReference(text)
+	if !ok {
+		return "", nil, "", fmt.Errorf("clipboard does not contain a supported image or file path")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", nil, "", err
+	}
+	contentType := mime.TypeByExtension(strings.ToLower(filepath.Ext(path)))
+	if contentType == "" && len(data) > 0 {
+		contentType = http.DetectContentType(data)
+	}
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	return filepath.Base(path), data, contentType, nil
+}
+
+func readWaylandClipboardImage() (string, []byte, string, bool) {
+	if _, err := exec.LookPath("wl-paste"); err != nil {
+		return "", nil, "", false
+	}
+	out, err := exec.Command("wl-paste", "--list-types").Output()
+	if err != nil {
+		return "", nil, "", false
+	}
+	types := string(out)
+	for _, candidate := range []string{"image/png", "image/jpeg", "image/webp", "image/gif"} {
+		if !strings.Contains(types, candidate) {
+			continue
+		}
+		data, err := exec.Command("wl-paste", "--no-newline", "--type", candidate).Output()
+		if err != nil || len(data) == 0 {
+			continue
+		}
+		return clipboardFileName(candidate), data, candidate, true
+	}
+	return "", nil, "", false
+}
+
+func readXClipClipboardImage() (string, []byte, string, bool) {
+	if _, err := exec.LookPath("xclip"); err != nil {
+		return "", nil, "", false
+	}
+	out, err := exec.Command("xclip", "-selection", "clipboard", "-t", "TARGETS", "-o").Output()
+	if err != nil {
+		return "", nil, "", false
+	}
+	types := string(out)
+	for _, candidate := range []string{"image/png", "image/jpeg", "image/webp", "image/gif"} {
+		if !strings.Contains(types, candidate) {
+			continue
+		}
+		data, err := exec.Command("xclip", "-selection", "clipboard", "-t", candidate, "-o").Output()
+		if err != nil || len(data) == 0 {
+			continue
+		}
+		return clipboardFileName(candidate), data, candidate, true
+	}
+	return "", nil, "", false
+}
+
+func clipboardTextLinux() (string, error) {
+	if _, err := exec.LookPath("wl-paste"); err == nil {
+		out, err := exec.Command("wl-paste", "--no-newline").Output()
+		if err == nil {
+			return strings.TrimSpace(string(out)), nil
+		}
+	}
+	if _, err := exec.LookPath("xclip"); err == nil {
+		out, err := exec.Command("xclip", "-selection", "clipboard", "-o").Output()
+		if err == nil {
+			return strings.TrimSpace(string(out)), nil
+		}
+	}
+	if _, err := exec.LookPath("xsel"); err == nil {
+		out, err := exec.Command("xsel", "--clipboard", "--output").Output()
+		if err == nil {
+			return strings.TrimSpace(string(out)), nil
+		}
+	}
+	return "", fmt.Errorf("clipboard tools not found (install wl-clipboard, xclip, or xsel)")
+}
+
+func clipboardTextWindows() (string, error) {
+	out, err := exec.Command("powershell", "-NoProfile", "-Command", "Get-Clipboard -Raw").Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+func clipboardFileName(contentType string) string {
+	ext := ".bin"
+	switch contentType {
+	case "image/png":
+		ext = ".png"
+	case "image/jpeg":
+		ext = ".jpg"
+	case "image/webp":
+		ext = ".webp"
+	case "image/gif":
+		ext = ".gif"
+	}
+	return fmt.Sprintf("clipboard-%d%s", time.Now().Unix(), ext)
 }
 
 func formatUsersSummary(users []state.UserEntry) string {
