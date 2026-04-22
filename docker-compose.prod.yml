@@ -19,6 +19,8 @@ services:
     depends_on:
       - postgres
       - redis
+    env_file:
+      - .env.prod
     environment:
       CHAT_DATABASE_URL: postgres://teamchat:teamchat@postgres:5432/teamchat?sslmode=disable
       CHAT_REDIS_ADDR: redis:6379
